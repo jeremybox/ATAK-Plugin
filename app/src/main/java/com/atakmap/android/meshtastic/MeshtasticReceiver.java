@@ -194,6 +194,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 thread.start();
                 break;
             }
+            case Portnums.PortNum.ALERT_APP_VALUE:
             case MeshtasticMapComponent.ACTION_TEXT_MESSAGE_APP:
                 Log.d(TAG, "Got a meshtastic text message");
                 DataPacket payload = intent.getParcelableExtra(MeshtasticMapComponent.EXTRA_PAYLOAD);
