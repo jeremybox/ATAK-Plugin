@@ -869,8 +869,6 @@ public class MeshtasticMapComponent extends DropDownMapComponent
         prefs.unregisterOnSharedPreferenceChangeListener(this);
         ToolsPreferenceFragment.unregister(pluginContext.getString(R.string.preferences_title));
         URIContentManager.getInstance().unregisterSender(meshtasticSender);
-
-
     }
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
