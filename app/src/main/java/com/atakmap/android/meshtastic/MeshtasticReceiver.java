@@ -74,7 +74,7 @@ import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamResult;
 
 public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceRemote.CotEventListener {
-    private final String TAG = "MeshtasticReceiver";
+    private static final String TAG = "MeshtasticReceiver";
     private static SharedPreferences prefs;
     private SharedPreferences.Editor editor;
     private int oldModemPreset;
@@ -664,7 +664,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     }
 
                     // inform sender we're done recv
-                    DataPacket dp = new DataPacket(sender, new byte[]{'M', 'F', 'T'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, 3, prefs.getInt("plugin_meshtastic_channel", 0));
+                    DataPacket dp = new DataPacket(sender, new byte[]{'M', 'F', 'T'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, getHopLimit(), getChannelIndex());
                     MeshtasticMapComponent.sendToMesh(dp);
                     try {
                         Thread.sleep(3000);
@@ -1037,6 +1037,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
     public int getHopLimit() {
         try {
             int hopLimit = prefs.getInt("plugin_meshtastic_hop_limit", 3);
+            Log.d(TAG, "Hop Limit: " + hopLimit);
             if (hopLimit > 8) {
                 hopLimit = 8;
             }
@@ -1049,7 +1050,8 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
     public static int getChannelIndex() {
         try {
-            int channel = prefs.getInt("plugin_meshtastic_channel", 0);
+            int channel = Integer.valueOf(prefs.getString("plugin_meshtastic_channel", "0"));
+            Log.d(TAG, "Channel: " + channel);
             return channel;
         } catch (Exception e) {
             e.printStackTrace();
