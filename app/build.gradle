@@ -92,6 +92,12 @@ android {
     compileSdkVersion 33
     buildToolsVersion "34.0.0"
 
+    bundle {
+        storeArchive {
+            enable = false
+        }
+    }
+
     dexOptions {
         jumboMode = true
     }
@@ -179,6 +185,10 @@ android {
 
     packagingOptions {
         exclude 'META-INF/INDEX.LIST'
+        jniLibs {
+            useLegacyPackaging = true
+        }
+
     }
 
     sourceSets {
