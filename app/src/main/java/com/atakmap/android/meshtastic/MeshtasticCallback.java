@@ -93,7 +93,7 @@ public class MeshtasticCallback implements SaveAndSendCallback {
                     editor.apply();
 
                     Log.d(TAG, "Broadcasting switch command");
-                    DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, new byte[]{'S', 'W', 'T'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), messageId, MessageStatus.UNKNOWN, 3, channel);
+                    DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, new byte[]{'S', 'W', 'T'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), messageId, MessageStatus.UNKNOWN, 3, channel, true);
                     MeshtasticMapComponent.sendToMesh(dp);
 
                     // wait for the remote nodes to ACK our switch command

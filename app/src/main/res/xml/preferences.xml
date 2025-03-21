@@ -81,6 +81,12 @@
         android:inputType="number"
         android:defaultValue="3" />
     <com.atakmap.android.gui.PanSwitchPreference
+        android:key="plugin_meshtastic_wantsAck"
+        android:title="Request ACK for outgoing messages"
+        android:summary="If enabled, the plugin will request an ACK for outgoing messages"
+        android:dialogTitle="Request ACK for outgoing messages"
+        android:defaultValue="false"/>
+    <com.atakmap.android.gui.PanSwitchPreference
         android:key="plugin_meshtastic_switch"
         android:title="Allow SWITCH command"
         android:summary="If enabled, the plugin will listen for file transfer commands"
