@@ -368,8 +368,8 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     Log.d(TAG, "myId was null");
                     return;
                 }
-
-                if (ni.getUser().getId().equals(myId)) {
+                boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+                if (shouldUseMeshtasticExternalGPS && ni.getUser().getId().equals(myId)) {
                     Log.d(TAG, "Sending self coordinates to network GPS");
 
                     meshtasticExternalGPS.updatePosition(ni.getPosition());

@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -18,6 +19,7 @@ public class MeshtasticExternalGPS {
 
     private static final String TAG = "MeshtasticExternalGPS";
     private final AtomicReference<Position> currentPosition = new AtomicReference<>();
+    private final AtomicBoolean started = new AtomicBoolean(false);
     private final AtomicInteger port = new AtomicInteger(-1);
     private final ScheduledExecutorService updaterThread;
     private final PositionToNMEAMapper positionToNMEAMapper;
@@ -28,6 +30,9 @@ public class MeshtasticExternalGPS {
     }
 
     public void updatePosition(Position position) {
+        if (!started.get()) {
+            return;
+        }
         currentPosition.set(position);
         if (position != null) {
             Log.d(TAG, "Current position updated: Lat: " + position.getLatitude() + ", Lon: " + position.getLongitude() + ", Alt: " + position.getAltitude() + ", Time: " + position.getTime() + ", Speed: " + position.getGroundSpeed() + ", Head: " + position.getGroundTrack() + ", Sat: " + position.getSatellitesInView());
@@ -37,6 +42,10 @@ public class MeshtasticExternalGPS {
     }
 
     public void start(int port) {
+        if (started.get()) {
+            return;
+        }
+        started.set(true);
         this.port.updateAndGet(i -> {
             if (port < 0 || port > 65535) {
                 throw new IllegalArgumentException("Can't start Meshtastic External GPS without port");
@@ -49,6 +58,10 @@ public class MeshtasticExternalGPS {
     }
 
     public void stop() {
+        if (!started.get()) {
+            return;
+        }
+        started.set(false);
         try {
             updaterThread.shutdown();
             if (!updaterThread.awaitTermination(10, TimeUnit.SECONDS)) {
@@ -64,6 +77,9 @@ public class MeshtasticExternalGPS {
     }
 
     private void refreshPosition() {
+        if (!started.get()) {
+            return;
+        }
         Position position = this.currentPosition.get();
         int port = this.port.get();
         if (port != -1 && position != null) {

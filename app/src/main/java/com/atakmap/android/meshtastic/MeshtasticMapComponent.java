@@ -809,7 +809,10 @@ public class MeshtasticMapComponent extends DropDownMapComponent
         prefs.registerOnSharedPreferenceChangeListener(this);
 
         int gpsPort = prefs.getInt("listenPort", 4349); // External GPS port
-        meshtasticExternalGPS.start(gpsPort);
+        boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+        if (shouldUseMeshtasticExternalGPS) {
+            meshtasticExternalGPS.start(gpsPort);
+        }
 
         mr = new MeshtasticReceiver(meshtasticExternalGPS);
         IntentFilter intentFilter = getIntentFilter();
@@ -902,6 +905,16 @@ public class MeshtasticMapComponent extends DropDownMapComponent
             editor.putString("constantReportingRateUnreliable", rate);
             editor.putString("constantReportingRateReliable", rate);
             editor.apply();
+        }
+
+        if ("plugin_meshtastic_external_gps".equals(key)) {
+            boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+            if (shouldUseMeshtasticExternalGPS) {
+                int gpsPort = prefs.getInt("listenPort", 4349);
+                meshtasticExternalGPS.start(gpsPort);
+            } else {
+                meshtasticExternalGPS.stop();
+            }
         }
     }
 }
