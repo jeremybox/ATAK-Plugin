@@ -17,7 +17,6 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.RemoteException;
-import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
 import android.widget.Toast;
@@ -79,10 +78,16 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
     private SharedPreferences.Editor editor;
     private int oldModemPreset;
     private String sender;
+    private final MeshtasticExternalGPS meshtasticExternalGPS;
     private static NotificationManager mNotifyManager;
     private static NotificationCompat.Builder mBuilder;
     private static NotificationChannel mChannel;
     private static int id = 42069;
+
+    public MeshtasticReceiver(MeshtasticExternalGPS meshtasticExternalGPS) {
+        this.meshtasticExternalGPS = meshtasticExternalGPS;
+    }
+
     @Override
     public void onReceive(Context context, Intent intent) {
 
@@ -362,6 +367,12 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 if (myId == null) {
                     Log.d(TAG, "myId was null");
                     return;
+                }
+                boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+                if (shouldUseMeshtasticExternalGPS && ni.getUser().getId().equals(myId)) {
+                    Log.d(TAG, "Sending self coordinates to network GPS");
+
+                    meshtasticExternalGPS.updatePosition(ni.getPosition());
                 }
 
                 if (ni.getUser().getId().equals(myId) && prefs.getBoolean("plugin_meshtastic_self", false)) {
@@ -1030,7 +1041,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 }
 
             } catch (InvalidProtocolBufferException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Could not parse TAK packet", e);
             }
         }
     }

@@ -26,6 +26,12 @@
         android:dialogTitle="Don't show Meshtastic devices without GPS"
         android:defaultValue="false"/>
     <com.atakmap.android.gui.PanSwitchPreference
+        android:key="plugin_meshtastic_external_gps"
+        android:title="Use Meshtastic GPS as External GPS"
+        android:summary="If enabled, the plugin will forward the GPS data from Meshtastic node to the ATAK external GPS port. Set GPS option to ignore internal GPS to use this option."
+        android:dialogTitle="Use Meshtastic GPS as External GPS"
+        android:defaultValue="false"/>
+    <com.atakmap.android.gui.PanSwitchPreference
         android:key="plugin_meshtastic_self"
         android:title="Do not show your local Meshtastic node"
         android:summary="If enabled, your local Meshtastic node will not be shown on the map"

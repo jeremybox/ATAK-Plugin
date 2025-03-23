@@ -80,6 +80,11 @@ public class MeshtasticMapComponent extends DropDownMapComponent
         CotServiceRemote.ConnectionListener {
     private static final String TAG = "MeshtasticMapComponent";
     private Context pluginContext;
+
+    public MeshtasticMapComponent() {
+        meshtasticExternalGPS = new MeshtasticExternalGPS(new PositionToNMEAMapper());
+    }
+
     @Override
     public void onCotServiceConnected(Bundle bundle) {
 
@@ -125,6 +130,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
     public static final String ACTION_CONFIG_RATE = "com.atakmap.android.meshtastic.CONFIG";
     public static MeshtasticWidget mw;
     private MeshtasticReceiver mr;
+    private final MeshtasticExternalGPS meshtasticExternalGPS;
     private MeshtasticSender meshtasticSender;
     private static NotificationManager mNotifyManager;
     private static NotificationCompat.Builder mBuilder;
@@ -802,7 +808,13 @@ public class MeshtasticMapComponent extends DropDownMapComponent
         editor.apply();
         prefs.registerOnSharedPreferenceChangeListener(this);
 
-        mr = new MeshtasticReceiver();
+        int gpsPort = prefs.getInt("listenPort", 4349); // External GPS port
+        boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+        if (shouldUseMeshtasticExternalGPS) {
+            meshtasticExternalGPS.start(gpsPort);
+        }
+
+        mr = new MeshtasticReceiver(meshtasticExternalGPS);
         IntentFilter intentFilter = getIntentFilter();
 
         view.getContext().registerReceiver(mr, intentFilter, Context.RECEIVER_EXPORTED);
@@ -881,8 +893,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
         prefs.unregisterOnSharedPreferenceChangeListener(this);
         ToolsPreferenceFragment.unregister(pluginContext.getString(R.string.preferences_title));
         URIContentManager.getInstance().unregisterSender(meshtasticSender);
-
-
+        meshtasticExternalGPS.stop();
     }
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
@@ -894,6 +905,16 @@ public class MeshtasticMapComponent extends DropDownMapComponent
             editor.putString("constantReportingRateUnreliable", rate);
             editor.putString("constantReportingRateReliable", rate);
             editor.apply();
+        }
+
+        if ("plugin_meshtastic_external_gps".equals(key)) {
+            boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+            if (shouldUseMeshtasticExternalGPS) {
+                int gpsPort = prefs.getInt("listenPort", 4349);
+                meshtasticExternalGPS.start(gpsPort);
+            } else {
+                meshtasticExternalGPS.stop();
+            }
         }
     }
 }
