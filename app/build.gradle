@@ -101,6 +101,17 @@ android {
     dexOptions {
         jumboMode = true
     }
+    bundle {
+        storeArchive {
+            enable = false
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -217,7 +228,7 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 26
+        minSdkVersion 28
         targetSdkVersion 33
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a", "x86"
@@ -235,6 +246,8 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: '*.jar')
+
+    implementation project(":libcodec2-android")
 
     // https://mvnrepository.com/artifact/com.siemens.ct.exi/exificient
     implementation 'com.siemens.ct.exi:exificient:1.0.7'

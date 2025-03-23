@@ -1,2 +1,4 @@
-include ':models', ':app'
+include ':models',
+        ':libcodec2-android',
+        ':app'
 rootProject.name = "Meshtastic Plugin"

@@ -3,11 +3,17 @@ package com.atakmap.android.meshtastic;
 import static com.atakmap.android.maps.MapView._mapView;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.AudioTrack;
+import android.media.MediaRecorder;
 import android.os.Build;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
@@ -16,6 +22,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.core.content.ContextCompat;
 
@@ -24,6 +31,7 @@ import com.atakmap.android.dropdown.DropDownReceiver;
 import com.atakmap.android.maps.MapView;
 import com.atakmap.android.meshtastic.plugin.R;
 import com.atakmap.coremap.log.Log;
+import com.atakmap.math.Mesh;
 import com.geeksville.mesh.ATAKProtos;
 import com.geeksville.mesh.AppOnlyProtos;
 import com.geeksville.mesh.ConfigProtos;
@@ -35,6 +43,7 @@ import com.geeksville.mesh.NodeInfo;
 import com.geeksville.mesh.Portnums;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
+import com.ustadmobile.codec2.Codec2;
 
 import org.vosk.Model;
 import org.vosk.Recognizer;
@@ -48,12 +57,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import java.nio.ShortBuffer;
+
 
 public class MeshtasticDropDownReceiver extends DropDownReceiver implements
         DropDown.OnStateListener, RecognitionListener {
@@ -68,7 +84,7 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
     private final Context appContext;
     private final MapView mapView;
     private final View mainView;
-    private Button voiceMemoBtn, configBtn;
+    private Button voiceMemoBtn, talk;
     private Model model;
     public SpeechService speechService;
     private TextView tv;
@@ -79,6 +95,17 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
 
     private int hopLimit = 3;
     private int channel = 0;
+
+    private boolean audioPermissionGranted = false;
+    private static final int RECORDER_SAMPLERATE = 8000;
+    private AudioRecord recorder = null;
+    private Thread recordingThread = null;
+    private AtomicBoolean isRecording = new AtomicBoolean(false);
+    private short recorderBuf[] = null;
+    private char encodedBuf[] = null;
+    private long c2 = 0;
+    private int c2FrameSize = 0;
+    private int samplesBufSize = 0;
 
     protected MeshtasticDropDownReceiver(final MapView mapView, final Context context) {
         super(mapView);
@@ -178,6 +205,52 @@ Config: device {
             try {
                 Log.d(TAG, "REC AUDIO GRANTED");
                 initModel();
+
+                audioPermissionGranted = true;
+
+                // button to voice talk to all devices
+                talk = mainView.findViewById(R.id.talk);
+                talk.setOnClickListener(v -> {
+                    if (!isRecording.getAndSet(true)) {
+                        talk.setText("Stop");
+                        recordVoice(true);
+                    } else {
+                        isRecording.set(false);
+                        talk.setText("All Talk");
+                        Log.d(TAG, "Recording stopped");
+                        //recorder = null;
+/*
+                         new Thread(() -> {
+                             try {
+                                 Thread.sleep(500);
+                                 if (codec2_chunks.size() > 0) {
+                                     // send whatevers left in the buffer
+                                     byte[] audio = new byte[0];
+                                     for (int i = 0; i < codec2_chunks.size(); i++) {
+                                         audio = append(audio, (byte[]) codec2_chunks.get(i));
+                                     }
+                                     Log.d(TAG, "audio total bytes: " + audio.length);
+
+                                     synchronized (codec2_chunks) {
+                                         codec2_chunks.clear();
+                                     }
+
+                                     Log.d(TAG, "Broadcasting voice");
+                                     DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, append(new byte[]{(byte) 0xC2}, audio), Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, 1, MeshtasticReceiver.getChannelIndex(), 0);
+                                     MeshtasticMapComponent.sendToMesh(dp);
+                                 }
+
+
+                             } catch (Exception e) {
+                                 e.printStackTrace();
+                             }
+                         }).start();
+
+ */
+                    }
+                });
+
+
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -192,7 +265,13 @@ Config: device {
         AtomicBoolean recording = new AtomicBoolean(false);
         keyListener = (v, keyCode, event) -> {
             Log.d(TAG, "keyCode: " + keyCode + " onKeyEvent: " + event.toString());
-            int pttKey = prefs.getInt("plugin_meshtastic_ptt", 0);
+            int pttKey = 0;
+            try {
+                pttKey = Integer.valueOf(prefs.getString("plugin_meshtastic_ptt", "0"));
+            } catch (NumberFormatException e) {
+                Log.d(TAG, "PTT key not set");
+                return false;
+            }
             if (keyCode == pttKey && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() > 0 && !recording.get()) {
                 // start recording
                 recording.set(true);
@@ -213,6 +292,147 @@ Config: device {
             return false;
         };
         mapView.addOnKeyListener(keyListener);
+
+        // codec2 recorder/playback
+        c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        c2FrameSize = Codec2.getBitsSize(c2);
+        samplesBufSize = Codec2.getSamplesPerFrame(c2);
+        int minAudioBufSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        recorderBuf = new short[samplesBufSize];
+        int frameNum = recorderBuf.length / samplesBufSize;
+        recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minAudioBufSize);
+    }
+    private final List vData = Collections.synchronizedList(new ArrayList<>());
+
+    private short[] convertByteArrayToShortArray(byte[] byteArray) {
+        if (byteArray.length % 2 != 0) {
+            throw new IllegalArgumentException("Byte array length must be even for short conversion.");
+        }
+        ShortBuffer shortBuffer = ByteBuffer.wrap(byteArray).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
+        short[] shortArray = new short[shortBuffer.remaining()];
+        shortBuffer.get(shortArray);
+        return shortArray;
+    }
+
+    private final List codec2_chunks = Collections.synchronizedList(new ArrayList<>());
+
+    public void recordVoice(boolean isBroadcast) {
+        try {
+            if (recorder != null && (recorder.getState() == AudioRecord.RECORDSTATE_RECORDING))
+                recorder.stop();
+            recorder.startRecording();
+            Log.d(TAG, "Recording...");
+            // 700C
+            // minInBufSize: 640 c2FrameSize: 4 samplesBufSize: 320 FrameNum: 2
+            ///////
+            // 1200
+            // minInBufSize: 640 c2FrameSize: 8 samplesBufSize: 160 FrameNum: 4
+            recordingThread = new Thread(() -> {
+                encodedBuf = new char[c2FrameSize];
+                while (isRecording.get()) {
+                    recorder.read(recorderBuf, 0, recorderBuf.length);
+                    Codec2.encode(c2, recorderBuf, encodedBuf);
+                    byte[] frame = charArrayToByteArray(encodedBuf);
+
+                    synchronized (codec2_chunks) {
+                        codec2_chunks.add(frame);
+                    }
+
+                    if (codec2_chunks.size() > 8) {
+                        // 59 chunks, 4 bytes each, concat all chunks into one byte array equals 237 bytes with
+                        byte[] audio = new byte[0];
+                        for (int i = 0; i < codec2_chunks.size(); i++) {
+                            audio = append(audio, (byte[]) codec2_chunks.get(i));
+                        }
+                        Log.d(TAG, "audio total bytes: " + audio.length);
+
+                        synchronized (codec2_chunks) {
+                            codec2_chunks.clear();
+                        }
+
+                        try {
+                            if (isBroadcast) {
+                                Log.d(TAG, "Broadcasting voice");
+                                DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, append(new byte[]{(byte) 0xC2}, audio), Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, 1, MeshtasticReceiver.getChannelIndex(), 0);
+                                MeshtasticMapComponent.sendToMesh(dp);
+                            } else
+                                Log.d(TAG, "Direct voice not implemented");
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }, "AudioRecorder Thread");
+            recordingThread.start();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // convert char array to byte array
+    private static byte[] charArrayToByteArray(char[] c_array) {
+        byte[] b_array = new byte[c_array.length];
+        for(int i= 0; i < c_array.length; i++) {
+            b_array[i] = (byte)(0xFF & c_array[i]);
+        }
+        return b_array;
+    }
+
+    public boolean endsWith(byte[] needle, byte[] haystack) {
+        if (needle.length > haystack.length)
+            return false;
+        for (int i = 0; i < needle.length; i++) {
+            if (needle[needle.length - i - 1] != haystack[haystack.length - i - 1])
+                return false;
+        }
+        return true;
+    }
+
+    // byte array slice method
+    public byte[] slice(byte[] array, int start, int end) {
+        if (start < 0) {
+            start = array.length + start;
+        }
+        if (end < 0) {
+            end = array.length + end;
+        }
+        int length = end - start;
+        byte[] result = new byte[length];
+        for (int i = 0; i < length; i++) {
+            result[i] = array[start + i];
+        }
+        return result;
+    }
+
+    // byte array append
+    public byte[] append(byte[] a, byte[] b) {
+        byte[] result = new byte[a.length + b.length];
+        for (int i = 0; i < a.length; i++)
+            result[i] = a[i];
+        for (int i = 0; i < b.length; i++)
+            result[a.length + i] = b[i];
+        return result;
+    }
+
+    // short array append
+    public short[] append(short[] a, short[] b) {
+        short[] result = new short[a.length + b.length];
+        for (int i = 0; i < a.length; i++)
+            result[i] = a[i];
+        for (int i = 0; i < b.length; i++)
+            result[a.length + i] = b[i];
+        return result;
+    }
+    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+    public static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars);
     }
 
     @Override
@@ -384,13 +604,12 @@ Config: device {
         Log.d(TAG, "Sending: " + tak_packet.build().toString());
 
         ByteString payload = ByteString.copyFrom(converted.getBytes());
-        hopLimit = prefs.getInt("plugin_meshtastic_hoplimit", 3);
-        if (hopLimit > 8) {
-            hopLimit = 8;
-        }
-        channel = MeshtasticReceiver.getChannelIndex();
 
-        DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, MeshProtos.Data.newBuilder().setPayload(payload).build().toByteArray(),Portnums.PortNum.TEXT_MESSAGE_APP_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, MeshtasticReceiver.getWantsAck());
+        hopLimit = MeshtasticReceiver.getHopLimit();
+        channel = MeshtasticReceiver.getChannelIndex();
+        int wantAck = MeshtasticReceiver.getWantsAck();
+
+        DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, MeshProtos.Data.newBuilder().setPayload(payload).build().toByteArray(),Portnums.PortNum.TEXT_MESSAGE_APP_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, wantAck);
         MeshtasticMapComponent.sendToMesh(dp);
     }
 

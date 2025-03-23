@@ -1,0 +1,96 @@
+/**
+ ~  * Created by Taktical Solutions LLC on 11/20/24, 1:47 PM
+ ~  * Copyright (c) 2024 . All rights reserved.
+ ~  * Last modified 11/20/24, 12:19 PM
+ ~  */
+
+apply plugin: 'com.android.library'
+
+version = "1.0.0"
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+    }
+}
+
+android {
+    ndkVersion "25.1.8937393"
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        compileSdkVersion 33
+        minSdkVersion 28
+        targetSdkVersion 33
+        versionCode 1
+        versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                cppFlags ""
+            }
+        }
+        ndk {
+            abiFilters = []
+            abiFilters.addAll(rootProject.ext.ABI_FILTERS.split(';').collect{it as String})
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+        }
+    }
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['imported-lib']
+        }
+    }
+
+    packagingOptions {
+        pickFirst ("lib/arm64-v8a/libcodec2.so")
+        pickFirst ("lib/arm64-v8a/libCodec2JNI.so")
+        pickFirst ("lib/armeabi-v7a/libcodec2.so")
+        pickFirst ("lib/armeabi-v7a/libCodec2JNI.so")
+    }
+}
+
+// As per: https://github.com/googlesamples/android-ndk/blob/master/hello-libs/app/build.gradle
+tasks.whenTaskAdded { task ->
+    if (task.name == 'externalNativeBuildRelease') {
+        task.dependsOn compileCodec2
+    } else if (task.name == 'externalNativeBuildDebug') {
+        task.dependsOn compileCodec2
+    }
+}
+
+task compileCodec2 {
+    doFirst {
+        for(String abi : rootProject.ext.ABI_FILTERS.split(";")) {
+            project.file("build/codec2_build_android_" + abi).mkdirs()
+            project.file("build/imported-lib/"+abi).mkdirs()
+            copy {
+                from "$projectDir/imported-lib/"+abi
+                into "$projectDir/build/imported-lib/"+abi
+            }
+        }
+    }
+
+    doLast {}
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.support:support-annotations:28.0.0'
+}

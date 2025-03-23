@@ -87,11 +87,11 @@
         android:inputType="number"
         android:defaultValue="3" />
     <com.atakmap.android.gui.PanSwitchPreference
-        android:key="plugin_meshtastic_wantsAck"
+        android:key="plugin_meshtastic_wantAck"
         android:title="Request ACK for outgoing messages"
         android:summary="If enabled, the plugin will request an ACK for outgoing messages"
         android:dialogTitle="Request ACK for outgoing messages"
-        android:defaultValue="false"/>
+        android:defaultValue="true"/>
     <com.atakmap.android.gui.PanSwitchPreference
         android:key="plugin_meshtastic_switch"
         android:title="Allow SWITCH command"
