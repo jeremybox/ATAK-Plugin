@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2025 Meshtastic LLC
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package com.geeksville.mesh.util
 
 import android.widget.EditText
@@ -19,7 +36,7 @@ val Any?.anonymize: String
 fun Any?.anonymize(maxLen: Int = 3) =
     if (this != null) ("..." + this.toString().takeLast(maxLen)) else "null"
 
-/// A toString that makes sure all newlines are removed (for nice logging).
+// A toString that makes sure all newlines are removed (for nice logging).
 fun Any.toOneLineString() = this.toString().replace('\n', ' ')
 
 fun ConfigProtos.Config.toOneLineString(): String {
@@ -29,8 +46,9 @@ fun ConfigProtos.Config.toOneLineString(): String {
         .replace('\n', ' ')
 }
 
-/// Return a one line string version of an object (but if a release build, just say 'might be PII)
-fun Any.toPIIString() = "<PII?>"
+// Return a one line string version of an object (but if a release build, just say 'might be PII)
+fun Any.toPIIString() = this.toOneLineString()
+
 fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }
 
 fun formatAgo(lastSeenUnix: Int, currentTimeMillis: Long = System.currentTimeMillis()): String {
@@ -45,7 +63,7 @@ fun formatAgo(lastSeenUnix: Int, currentTimeMillis: Long = System.currentTimeMil
     }
 }
 
-/// Allows usage like email.onEditorAction(EditorInfo.IME_ACTION_NEXT, { confirm() })
+// Allows usage like email.onEditorAction(EditorInfo.IME_ACTION_NEXT, { confirm() })
 fun EditText.onEditorAction(actionId: Int, func: () -> Unit) {
     setOnEditorActionListener { _, receivedActionId, _ ->
 

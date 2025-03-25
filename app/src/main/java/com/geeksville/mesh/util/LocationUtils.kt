@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2025 Meshtastic LLC
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package com.geeksville.mesh.util
 
 import com.geeksville.mesh.MeshProtos
@@ -14,6 +31,7 @@ import kotlin.math.cos
 import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.PI
 
 /*******************************************************************************
  * Revive some of my old Gaggle source code...
@@ -181,7 +199,7 @@ fun latLongToMeter(
     lat_b: Double,
     lng_b: Double
 ): Double {
-    val pk = (180 / 3.14169)
+    val pk = (180 / PI)
     val a1 = lat_a / pk
     val a2 = lng_a / pk
     val b1 = lat_b / pk
@@ -277,7 +295,7 @@ fun BoundingBox.requiredZoomLevel(): Double {
     val latLonHeight = topLeft.distanceToAsDouble(GeoPoint(bottomRight.latitude, topLeft.longitude))
     val requiredLatZoom = log2(360.0 / (latLonHeight / 111320))
     val requiredLonZoom = log2(360.0 / (latLonWidth / 111320))
-    return maxOf(requiredLatZoom, requiredLonZoom)
+    return maxOf(requiredLatZoom, requiredLonZoom) * 0.8
 }
 
 /**

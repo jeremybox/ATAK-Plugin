@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2025 Meshtastic LLC
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package com.geeksville.mesh
 
 import android.graphics.Color
@@ -14,12 +31,12 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class MeshUser(
-        val id: String,
-        val longName: String,
-        val shortName: String,
-        val hwModel: MeshProtos.HardwareModel,
-        val isLicensed: Boolean = false,
-        val role: Int = 0,
+    val id: String,
+    val longName: String,
+    val shortName: String,
+    val hwModel: MeshProtos.HardwareModel,
+    val isLicensed: Boolean = false,
+    val role: Int = 0,
 ) : Parcelable {
 
     override fun toString(): String {
@@ -34,12 +51,12 @@ data class MeshUser(
     /** Create our model object from a protobuf.
      */
     constructor(p: MeshProtos.User) : this(
-            p.id,
-            p.longName,
-            p.shortName,
-            p.hwModel,
-            p.isLicensed,
-            p.roleValue
+        p.id,
+        p.longName,
+        p.shortName,
+        p.hwModel,
+        p.isLicensed,
+        p.roleValue
     )
 
     /** a string version of the hardware model, converted into pretty lowercase and changing _ to -, and p to dot
@@ -53,14 +70,14 @@ data class MeshUser(
 
 @Parcelize
 data class Position(
-        val latitude: Double,
-        val longitude: Double,
-        val altitude: Int,
-        val time: Int = currentTime(), // default to current time in secs (NOT MILLISECONDS!)
-        val satellitesInView: Int = 0,
-        val groundSpeed: Int = 0,
-        val groundTrack: Int = 0, // "heading"
-        val precisionBits: Int = 0,
+    val latitude: Double,
+    val longitude: Double,
+    val altitude: Int,
+    val time: Int = currentTime(), // default to current time in secs (NOT MILLISECONDS!)
+    val satellitesInView: Int = 0,
+    val groundSpeed: Int = 0,
+    val groundTrack: Int = 0, // "heading"
+    val precisionBits: Int = 0,
 ) : Parcelable {
 
     companion object {
@@ -74,15 +91,15 @@ data class Position(
     /** Create our model object from a protobuf.  If time is unspecified in the protobuf, the provided default time will be used.
      */
     constructor(position: MeshProtos.Position, defaultTime: Int = currentTime()) : this(
-            // We prefer the int version of lat/lon but if not available use the depreciated legacy version
-            degD(position.latitudeI),
-            degD(position.longitudeI),
-            position.altitude,
-            if (position.time != 0) position.time else defaultTime,
-            position.satsInView,
-            position.groundSpeed,
-            position.groundTrack,
-            position.precisionBits
+        // We prefer the int version of lat/lon but if not available use the depreciated legacy version
+        degD(position.latitudeI),
+        degD(position.longitudeI),
+        position.altitude,
+        if (position.time != 0) position.time else defaultTime,
+        position.satsInView,
+        position.groundSpeed,
+        position.groundTrack,
+        position.precisionBits
     )
 
     /// @return distance in meters to some other node (or null if unknown)
@@ -114,12 +131,12 @@ data class Position(
 
 @Parcelize
 data class DeviceMetrics(
-        val time: Int = currentTime(), // default to current time in secs (NOT MILLISECONDS!)
-        val batteryLevel: Int = 0,
-        val voltage: Float,
-        val channelUtilization: Float,
-        val airUtilTx: Float,
-        val uptimeSeconds: Int,
+    val time: Int = currentTime(), // default to current time in secs (NOT MILLISECONDS!)
+    val batteryLevel: Int = 0,
+    val voltage: Float,
+    val channelUtilization: Float,
+    val airUtilTx: Float,
+    val uptimeSeconds: Int,
 ) : Parcelable {
     companion object {
         fun currentTime() = (System.currentTimeMillis() / 1000).toInt()
@@ -128,25 +145,25 @@ data class DeviceMetrics(
     /** Create our model object from a protobuf.
      */
     constructor(p: TelemetryProtos.DeviceMetrics, telemetryTime: Int = currentTime()) : this(
-            telemetryTime,
-            p.batteryLevel,
-            p.voltage,
-            p.channelUtilization,
-            p.airUtilTx,
-            p.uptimeSeconds,
+        telemetryTime,
+        p.batteryLevel,
+        p.voltage,
+        p.channelUtilization,
+        p.airUtilTx,
+        p.uptimeSeconds,
     )
 }
 
 @Parcelize
 data class EnvironmentMetrics(
-        val time: Int = currentTime(), // default to current time in secs (NOT MILLISECONDS!)
-        val temperature: Float,
-        val relativeHumidity: Float,
-        val barometricPressure: Float,
-        val gasResistance: Float,
-        val voltage: Float,
-        val current: Float,
-        val iaq: Int,
+    val time: Int = currentTime(), // default to current time in secs (NOT MILLISECONDS!)
+    val temperature: Float,
+    val relativeHumidity: Float,
+    val barometricPressure: Float,
+    val gasResistance: Float,
+    val voltage: Float,
+    val current: Float,
+    val iaq: Int,
 ) : Parcelable {
     companion object {
         fun currentTime() = (System.currentTimeMillis() / 1000).toInt()
@@ -155,16 +172,16 @@ data class EnvironmentMetrics(
 
 @Parcelize
 data class NodeInfo(
-        val num: Int, // This is immutable, and used as a key
-        var user: MeshUser? = null,
-        var position: Position? = null,
-        var snr: Float = Float.MAX_VALUE,
-        var rssi: Int = Int.MAX_VALUE,
-        var lastHeard: Int = 0, // the last time we've seen this node in secs since 1970
-        var deviceMetrics: DeviceMetrics? = null,
-        var channel: Int = 0,
-        var environmentMetrics: EnvironmentMetrics? = null,
-        var hopsAway: Int = 0
+    val num: Int, // This is immutable, and used as a key
+    var user: MeshUser? = null,
+    var position: Position? = null,
+    var snr: Float = Float.MAX_VALUE,
+    var rssi: Int = Int.MAX_VALUE,
+    var lastHeard: Int = 0, // the last time we've seen this node in secs since 1970
+    var deviceMetrics: DeviceMetrics? = null,
+    var channel: Int = 0,
+    var environmentMetrics: EnvironmentMetrics? = null,
+    var hopsAway: Int = 0
 ) : Parcelable {
 
     val colors: Pair<Int, Int>

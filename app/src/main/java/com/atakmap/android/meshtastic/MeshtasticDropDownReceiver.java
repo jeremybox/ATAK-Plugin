@@ -3,18 +3,14 @@ package com.atakmap.android.meshtastic;
 import static com.atakmap.android.maps.MapView._mapView;
 
 import android.Manifest;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
-import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
-import android.media.AudioTrack;
 import android.media.MediaRecorder;
-import android.os.Build;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
 import android.view.KeyEvent;
@@ -22,7 +18,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.core.content.ContextCompat;
 
@@ -31,7 +26,6 @@ import com.atakmap.android.dropdown.DropDownReceiver;
 import com.atakmap.android.maps.MapView;
 import com.atakmap.android.meshtastic.plugin.R;
 import com.atakmap.coremap.log.Log;
-import com.atakmap.math.Mesh;
 import com.geeksville.mesh.ATAKProtos;
 import com.geeksville.mesh.AppOnlyProtos;
 import com.geeksville.mesh.ConfigProtos;
@@ -42,7 +36,6 @@ import com.geeksville.mesh.MessageStatus;
 import com.geeksville.mesh.NodeInfo;
 import com.geeksville.mesh.Portnums;
 import com.google.protobuf.ByteString;
-import com.google.protobuf.InvalidProtocolBufferException;
 import com.ustadmobile.codec2.Codec2;
 
 import org.vosk.Model;
@@ -59,7 +52,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -92,10 +84,8 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
     private View.OnKeyListener keyListener;
     public static TextToSpeech t1;
     private SharedPreferences prefs;
-
     private int hopLimit = 3;
     private int channel = 0;
-
     private boolean audioPermissionGranted = false;
     private static final int RECORDER_SAMPLERATE = 8000;
     private AudioRecord recorder = null;
@@ -134,68 +124,6 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
                 voiceMemoBtn.setText("Voice Memo");
             }
         });
-/*
-Config: device {
-    '-->  role: TAK
-    '-->  serial_enabled: true
-    '-->  node_info_broadcast_secs: 86400
-    '-->}
-    '-->position {
-    '-->  position_broadcast_secs: 86400
-    '-->  gps_update_interval: 120
-    '-->  position_flags: 777
-    '-->  broadcast_smart_minimum_distance: 100
-    '-->  broadcast_smart_minimum_interval_secs: 30
-    '-->  gps_mode: NOT_PRESENT
-    '-->}
-    '-->power {
-    '-->  wait_bluetooth_secs: 60
-    '-->  sds_secs: 4294967295
-    '-->  ls_secs: 300
-    '-->  min_wake_secs: 10
-    '-->}
-    '-->network {
-    '-->  ntp_server: "0.pool.ntp.org"
-    '-->}
-    '-->display {
-    '-->  screen_on_secs: 600
-    '-->}
-    '-->lora {
-    '-->  use_preset: true
-    '-->  modem_preset: MEDIUM_FAST
-    '-->  region: US
-    '-->  hop_limit: 3
-    '-->  tx_enabled: true
-    '-->  tx_power: 30
-    '-->  override_duty_cycle: true
-    '-->  sx126x_rx_boosted_gain: true
-    '-->}
-    '-->bluetooth {
-    '-->  enabled: true
-    '-->  fixed_pin: 123456
-    '-->}
-    '-->
-
- */
-
-        /*
-        configBtn = mainView.findViewById(R.id.configBtn);
-        configBtn.setOnClickListener(v -> {
-
-            try {
-                byte[] config = MeshtasticMapComponent.getConfig();
-                Log.d(TAG, "Config Size: " + config.length);
-                LocalOnlyProtos.LocalConfig c = LocalOnlyProtos.LocalConfig.parseFrom(config);
-                Log.d(TAG, "Config: " + c.toString());
-                ConfigProtos.Config.DeviceConfig dc = c.getDevice();
-                ConfigProtos.Config.LoRaConfig lc = c.getLora();
-
-
-            } catch (InvalidProtocolBufferException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        */
 
         // Check if user has given permission to record audio, init the model after permission is granted
         int permissionCheck = ContextCompat.checkSelfPermission(mapView.getContext().getApplicationContext(), Manifest.permission.RECORD_AUDIO);
@@ -218,39 +146,8 @@ Config: device {
                         isRecording.set(false);
                         talk.setText("All Talk");
                         Log.d(TAG, "Recording stopped");
-                        //recorder = null;
-/*
-                         new Thread(() -> {
-                             try {
-                                 Thread.sleep(500);
-                                 if (codec2_chunks.size() > 0) {
-                                     // send whatevers left in the buffer
-                                     byte[] audio = new byte[0];
-                                     for (int i = 0; i < codec2_chunks.size(); i++) {
-                                         audio = append(audio, (byte[]) codec2_chunks.get(i));
-                                     }
-                                     Log.d(TAG, "audio total bytes: " + audio.length);
-
-                                     synchronized (codec2_chunks) {
-                                         codec2_chunks.clear();
-                                     }
-
-                                     Log.d(TAG, "Broadcasting voice");
-                                     DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, append(new byte[]{(byte) 0xC2}, audio), Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, 1, MeshtasticReceiver.getChannelIndex(), 0);
-                                     MeshtasticMapComponent.sendToMesh(dp);
-                                 }
-
-
-                             } catch (Exception e) {
-                                 e.printStackTrace();
-                             }
-                         }).start();
-
- */
                     }
                 });
-
-
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -299,19 +196,7 @@ Config: device {
         samplesBufSize = Codec2.getSamplesPerFrame(c2);
         int minAudioBufSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         recorderBuf = new short[samplesBufSize];
-        int frameNum = recorderBuf.length / samplesBufSize;
         recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minAudioBufSize);
-    }
-    private final List vData = Collections.synchronizedList(new ArrayList<>());
-
-    private short[] convertByteArrayToShortArray(byte[] byteArray) {
-        if (byteArray.length % 2 != 0) {
-            throw new IllegalArgumentException("Byte array length must be even for short conversion.");
-        }
-        ShortBuffer shortBuffer = ByteBuffer.wrap(byteArray).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
-        short[] shortArray = new short[shortBuffer.remaining()];
-        shortBuffer.get(shortArray);
-        return shortArray;
     }
 
     private final List codec2_chunks = Collections.synchronizedList(new ArrayList<>());
@@ -324,9 +209,6 @@ Config: device {
             Log.d(TAG, "Recording...");
             // 700C
             // minInBufSize: 640 c2FrameSize: 4 samplesBufSize: 320 FrameNum: 2
-            ///////
-            // 1200
-            // minInBufSize: 640 c2FrameSize: 8 samplesBufSize: 160 FrameNum: 4
             recordingThread = new Thread(() -> {
                 encodedBuf = new char[c2FrameSize];
                 while (isRecording.get()) {
@@ -334,32 +216,30 @@ Config: device {
                     Codec2.encode(c2, recorderBuf, encodedBuf);
                     byte[] frame = charArrayToByteArray(encodedBuf);
 
-                    synchronized (codec2_chunks) {
+                    //synchronized (codec2_chunks) {
                         codec2_chunks.add(frame);
-                    }
+                    //}
 
                     if (codec2_chunks.size() > 8) {
-                        // 59 chunks, 4 bytes each, concat all chunks into one byte array equals 237 bytes with
+                        // 8 chunks, 4 bytes per chunk
                         byte[] audio = new byte[0];
-                        for (int i = 0; i < codec2_chunks.size(); i++) {
+                        for (int i = 0; i < codec2_chunks.size(); i++)
                             audio = append(audio, (byte[]) codec2_chunks.get(i));
-                        }
                         Log.d(TAG, "audio total bytes: " + audio.length);
 
-                        synchronized (codec2_chunks) {
-                            codec2_chunks.clear();
-                        }
+                        //synchronized (codec2_chunks) {
 
-                        try {
-                            if (isBroadcast) {
-                                Log.d(TAG, "Broadcasting voice");
-                                DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, append(new byte[]{(byte) 0xC2}, audio), Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, 1, MeshtasticReceiver.getChannelIndex(), 0);
-                                MeshtasticMapComponent.sendToMesh(dp);
-                            } else
-                                Log.d(TAG, "Direct voice not implemented");
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
+                            codec2_chunks.clear();
+                        //}
+
+                        if (isBroadcast) {
+                            Log.d(TAG, "Broadcasting voice");
+                            // 0xC2 is my codec2 header
+                            DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, append(new byte[]{(byte) 0xC2}, audio), Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, MeshtasticReceiver.getHopLimit(), MeshtasticReceiver.getChannelIndex(), false);
+                            MeshtasticMapComponent.sendToMesh(dp);
+                        } else
+                            Log.d(TAG, "Direct voice not implemented");
+
                     }
                 }
             }, "AudioRecorder Thread");
@@ -607,9 +487,8 @@ Config: device {
 
         hopLimit = MeshtasticReceiver.getHopLimit();
         channel = MeshtasticReceiver.getChannelIndex();
-        int wantAck = MeshtasticReceiver.getWantsAck();
 
-        DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, MeshProtos.Data.newBuilder().setPayload(payload).build().toByteArray(),Portnums.PortNum.TEXT_MESSAGE_APP_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, wantAck);
+        DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, MeshProtos.Data.newBuilder().setPayload(payload).build().toByteArray(),Portnums.PortNum.TEXT_MESSAGE_APP_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
         MeshtasticMapComponent.sendToMesh(dp);
     }
 

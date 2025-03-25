@@ -20,7 +20,7 @@ import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.AudioTrack;
-import android.media.MediaRecorder;
+
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.RemoteException;
@@ -34,11 +34,9 @@ import androidx.core.content.ContextCompat;
 import com.atakmap.android.contact.Contact;
 import com.atakmap.android.contact.Contacts;
 import com.atakmap.android.cot.CotMapComponent;
-import com.atakmap.android.cot.ExternalGPSInput;
+
 import com.atakmap.android.maps.MapView;
 import com.atakmap.android.meshtastic.plugin.R;
-import com.atakmap.android.selfcoordoverlay.SelfCoordOverlayUpdater;
-import com.atakmap.android.selfcoordoverlay.SelfCoordText;
 import com.atakmap.comms.CotServiceRemote;
 import com.atakmap.coremap.cot.event.CotDetail;
 import com.atakmap.coremap.cot.event.CotEvent;
@@ -62,14 +60,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -93,49 +87,50 @@ import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamResult;
 
 public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceRemote.CotEventListener {
+    // constants
     private static final String TAG = "MeshtasticReceiver";
-    private static ProtectedSharedPreferences prefs = new ProtectedSharedPreferences(PreferenceManager.getDefaultSharedPreferences(MapView.getMapView().getContext()));
-    private ProtectedSharedPreferences.Editor editor = prefs.edit();
-    private int oldModemPreset;
-    private String sender;
-    private final MeshtasticExternalGPS meshtasticExternalGPS;
     private static NotificationManager mNotifyManager;
     private static NotificationCompat.Builder mBuilder;
     private static NotificationChannel mChannel;
     private static int id = 42069;
+    private static int RECORDER_SAMPLERATE = 8000;
+    // shared prefs
+    private static ProtectedSharedPreferences prefs = new ProtectedSharedPreferences(
+            PreferenceManager.getDefaultSharedPreferences(MapView.getMapView().getContext())
+    );
+    private ProtectedSharedPreferences.Editor editor = prefs.edit();
+    // audio playback
+    private short playbackBuf[] = null;
+    private AudioTrack track = null;
+    private int samplesBufSize = 0;
+    private boolean audioPermissionGranted = false;
+    // chunking
+    private HashMap<Integer, byte[]> chunkMap = new HashMap<>();
+    private boolean chunking = false;
+    private int chunkSize = 0;
+    private int chunkCount = 0;
+    // misc
+    private long c2 = 0;
+    private int oldModemPreset;
+    private String sender;
+    // externl gps
+    private final MeshtasticExternalGPS meshtasticExternalGPS;
 
     public MeshtasticReceiver(MeshtasticExternalGPS meshtasticExternalGPS) {
         this.meshtasticExternalGPS = meshtasticExternalGPS;
-    }
-    private short playbackBuf[] = null;
-    private AudioTrack track =  null;
-    private AudioRecord recorder = null;
-    private Thread recordingThread = null;
-    private Thread playbackThread = null;
-    private long c2 = 0;
-    private int c2FrameSize = 0;
-    private int samplesBufSize = 0;
-    private int minAudioBufSize = 0;
-    private int frameNum = 0;
-    private short recorderBuf[] = null;
-    private static int RECORDER_SAMPLERATE = 8000;
-    private boolean audioPermissionGranted = false;
-
-    @Override
-    public void onReceive(Context context, Intent intent) {
-        if (track == null) {
+        int permissionCheck = ContextCompat.checkSelfPermission(MapView.getMapView().getContext(), Manifest.permission.RECORD_AUDIO);
+        if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
+            Log.d(TAG, "REC AUDIO DENIED");
+        } else {
+            this.audioPermissionGranted = true;
             Log.d(TAG, "Initializing codec2 stuff");
             // codec2 recorder/playback
-            c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
-            c2FrameSize = Codec2.getBitsSize(c2);
-            samplesBufSize = Codec2.getSamplesPerFrame(c2);
+            this.c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+            this.samplesBufSize = Codec2.getSamplesPerFrame(c2);
             int minAudioBufSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-            recorderBuf = new short[samplesBufSize];
-            frameNum = recorderBuf.length / samplesBufSize;
-            recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minAudioBufSize);
 
             // for voice playback
-            track = new AudioTrack.Builder()
+            this.track = new AudioTrack.Builder()
                     .setAudioAttributes(new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -146,49 +141,34 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                             .build())
                     .setTransferMode(AudioTrack.MODE_STREAM)
-                    .setBufferSizeInBytes(minAudioBufSize)
+                    .setBufferSizeInBytes(minAudioBufSize * 10)
                     .build();
-            track.setVolume(AudioTrack.getMaxVolume());
-            track.play();
-
-            int permissionCheck = ContextCompat.checkSelfPermission(MapView.getMapView().getContext(), Manifest.permission.RECORD_AUDIO);
-            if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "REC AUDIO DENIED");
-            } else {
-                audioPermissionGranted = true;
-            }
-
+            this.track.setVolume(AudioTrack.getMaxVolume());
+            this.track.play();
         }
 
-        if (mNotifyManager == null) {
-            mNotifyManager =
-                    (NotificationManager) getMapView().getContext()
-                            .getSystemService(NOTIFICATION_SERVICE);
-            mChannel = new NotificationChannel(
-                    "com.atakmap.android.meshtastic",
-                    "Meshtastic Notifications",
-                    NotificationManager.IMPORTANCE_DEFAULT); // correct Constant
-            mChannel.setSound(null, null);
-            mNotifyManager.createNotificationChannel(mChannel);
+        this.mNotifyManager = (NotificationManager) getMapView().getContext().getSystemService(NOTIFICATION_SERVICE);
+        this.mChannel = new NotificationChannel("com.atakmap.android.meshtastic", "Meshtastic Notifications", NotificationManager.IMPORTANCE_DEFAULT); // correct Constant
+        this.mChannel.setSound(null, null);
+        this.mNotifyManager.createNotificationChannel(mChannel);
 
-            Intent atakFrontIntent = new Intent();
-            atakFrontIntent.setComponent(new ComponentName(
-                    "com.atakmap.app.civ", "com.atakmap.app.ATAKActivity"));
-            atakFrontIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            atakFrontIntent.putExtra("internalIntent",
-                    new Intent("com.atakmap.android.meshtastic.SHOW_PLUGIN"));
-            PendingIntent appIntent = PendingIntent.getActivity(getMapView().getContext(), 0, atakFrontIntent, PendingIntent.FLAG_IMMUTABLE);
+        Intent atakFrontIntent = new Intent();
+        atakFrontIntent.setComponent(new ComponentName("com.atakmap.app.civ", "com.atakmap.app.ATAKActivity"));
+        atakFrontIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        atakFrontIntent.putExtra("internalIntent", new Intent("com.atakmap.android.meshtastic.SHOW_PLUGIN"));
+        PendingIntent appIntent = PendingIntent.getActivity(getMapView().getContext(), 0, atakFrontIntent, PendingIntent.FLAG_IMMUTABLE);
 
-            mBuilder = new NotificationCompat.Builder(context, "com.atakmap.android.meshtastic");
-            mBuilder.setContentTitle("Meshtastic File Transfer")
-                    .setContentText("Transfer in progress")
-                    .setSmallIcon(R.drawable.ic_launcher)
-                    .setAutoCancel(true)
-                    .setOngoing(false)
-                    .setContentIntent(appIntent);
-        }
+        mBuilder = new NotificationCompat.Builder(_mapView.getContext(), "com.atakmap.android.meshtastic");
+        mBuilder.setContentTitle("Meshtastic File Transfer")
+                .setContentText("Transfer in progress")
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setAutoCancel(true)
+                .setOngoing(false)
+                .setContentIntent(appIntent);
+    }
 
+    @Override
+    public void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
         if (action == null) return;
         Log.d(TAG, "ACTION: " + action);
@@ -256,7 +236,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 Thread thread = new Thread(() -> {
                     try {
                         receive(intent);
-                    } catch (InvalidProtocolBufferException e) {
+                    } catch (Exception e) {
                         e.printStackTrace();
                         return;
                     }
@@ -402,6 +382,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 NodeInfo ni = null;
                 try {
                     ni = intent.getParcelableExtra("com.geeksville.mesh.NodeInfo");
+                    Log.d(TAG, "NodeInfo: " + ni);
                 } catch (Exception e) {
                     e.printStackTrace();
                     return;
@@ -410,15 +391,14 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 if (ni == null) {
                     Log.d(TAG, "NodeInfo was null");
                     return;
-                }
-                if (ni.getUser() == null) {
+                } else if (ni.getUser() == null) {
                     Log.d(TAG, "getUser was null");
                     return;
-                }
-                if (ni.getPosition() == null) {
+                } else  if (ni.getPosition() == null) {
                     Log.d(TAG, "getPosition was null");
                     return;
                 }
+
                 if (prefs.getBoolean("plugin_meshtastic_nogps", false)) {
                     if (ni.getPosition().getLatitude() == 0 && ni.getPosition().getLongitude() == 0) {
                         Log.d(TAG, "Ignoring NodeInfo with 0,0 GPS");
@@ -426,8 +406,6 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     }
                     Log.d(TAG, "NodeInfo GPS: " + ni.getPosition().getLatitude() + ", " + ni.getPosition().getLongitude() + ", Ignoring due to preferences");
                 }
-
-                Log.d(TAG, ni.toString());
 
                 String myId = MeshtasticMapComponent.getMyNodeID();
                 if (myId == null) {
@@ -567,7 +545,6 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         }
     }
 
-    // byte array slice method
     public byte[] slice(byte[] array, int start, int end) {
         if (start < 0) {
             start = array.length + start;
@@ -583,7 +560,6 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         return result;
     }
 
-    // short array append
     public short[] append(short[] a, short[] b) {
         short[] result = new short[a.length + b.length];
         for (int i = 0; i < a.length; i++)
@@ -593,31 +569,6 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         return result;
     }
 
-    HashMap<Integer, byte[]> chunkMap = new HashMap<>();
-    boolean chunking = false;
-    int chunkSize = 0;
-    int chunkCount = 0;
-    private final List codec2_chunks = Collections.synchronizedList(new ArrayList<>());
-    private int voiceBufferMultiplier = 10;
-
-    private short[] convertByteArrayToShortArray(byte[] byteArray) {
-        if (byteArray.length % 2 != 0) {
-            throw new IllegalArgumentException("Byte array length must be even for short conversion.");
-        }
-        ShortBuffer shortBuffer = ByteBuffer.wrap(byteArray).order(ByteOrder.BIG_ENDIAN).asShortBuffer();
-        short[] shortArray = new short[shortBuffer.remaining()];
-        shortBuffer.get(shortArray);
-        return shortArray;
-    }
-    public static short[] convertByteArrayToZeroPaddedShortArray(byte[] byteArray) {
-        short[] shortArray = new short[byteArray.length]; // Each byte becomes one short
-
-        for (int i = 0; i < byteArray.length; i++) {
-            shortArray[i] = (short) (byteArray[i] & 0xFF); // Zero pad by masking with 0xFF
-        }
-
-        return shortArray;
-    }
     public static List<byte[]> extractChunks(byte[] byteArray) {
         int chunkSize = 4;
         List<byte[]> chunks = new ArrayList<>();
@@ -640,9 +591,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
         if (dataType == Portnums.PortNum.ATAK_FORWARDER_VALUE) {
             byte[] raw = payload.getBytes();
-            Log.d(TAG, String.format("%02X", raw[0]));
+
             // codec2 frame, short-circuit the rest of the data processing
-            if ((raw[0]&0xFF) == 0xC2) {
+            if (audioPermissionGranted && (track.getState() == AudioTrack.PLAYSTATE_STOPPED) && (raw[0]&0xFF) == 0xC2) {
                 Log.d(TAG, "Received codec2 frame");
                 // skip 0xC2 from data and split into frames of size c2FrameSize, and decode/play
                 List<byte[]> frames = extractChunks(slice(raw, 1, raw.length));
@@ -817,7 +768,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     }
 
                     // inform sender we're done recv
-                    DataPacket dp = new DataPacket(sender, new byte[]{'M', 'F', 'T'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, getHopLimit(), getChannelIndex(), 1);
+                    DataPacket dp = new DataPacket(sender, new byte[]{'M', 'F', 'T'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, getHopLimit(), getChannelIndex(), true);
                     MeshtasticMapComponent.sendToMesh(dp);
                     try {
                         Thread.sleep(3000);
@@ -881,12 +832,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         } else if (dataType == 72) {
             Log.d(TAG, "Got TAK_PACKET");
             Log.d(TAG, "Payload: " + payload);
-            String t = "";
-            for (int i = 0; i< payload.getBytes().length; i++) {
-                // convert bytes to ascii
-                t += (char) payload.getBytes()[i];
-            }
-            Log.d(TAG, "Payload: " + t);
+
             try {
                 ATAKProtos.TAKPacket tp = ATAKProtos.TAKPacket.parseFrom(payload.getBytes());
                 if (tp.getIsCompressed()) {
@@ -1187,6 +1133,15 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         }
     }
 
+    public static boolean getWantsAck() {
+        try {
+            return prefs.getBoolean("plugin_meshtastic_wantAck", true);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return true;
+        }
+    }
+
     public static int getHopLimit() {
         try {
             int hopLimit = prefs.getInt("plugin_meshtastic_hop_limit", 3);
@@ -1298,7 +1253,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     Log.d(TAG, "Total wire size for TAKPacket: " + tak_packet.build().toByteArray().length);
                     Log.d(TAG, "Sending: " + tak_packet.build().toString());
 
-                    dp = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, MeshtasticReceiver.getWantsAck());
+                    dp = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
                     try {
                         if (MeshtasticMapComponent.getMeshService() != null)
                             MeshtasticMapComponent.getMeshService().send(dp);
@@ -1388,7 +1343,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                             Log.d(TAG, "Total wire size for TAKPacket: " + tak_packet.build().toByteArray().length);
                             Log.d(TAG, "Sending: " + tak_packet.build().toString());
 
-                            dp = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, MeshtasticReceiver.getWantsAck());
+                            dp = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
                             try {
                                 if (MeshtasticMapComponent.getMeshService() != null)
                                     MeshtasticMapComponent.getMeshService().send(dp);
@@ -1400,15 +1355,5 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 }
             }
         }
-    }
-
-    public static int getWantsAck() {
-        try {
-            return prefs.getBoolean("plugin_meshtastic_wantAck", true) ? 1 : 0;
-        } catch (Exception e) {
-            e.printStackTrace();
-            return 1;
-        }
-
     }
 }
