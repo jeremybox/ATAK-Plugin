@@ -68,6 +68,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.siemens.ct.exi.core.EXIFactory;
@@ -113,7 +114,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
     private long c2 = 0;
     private int oldModemPreset;
     private String sender;
-    // externl gps
+    // Meshtastic externl gps
     private final MeshtasticExternalGPS meshtasticExternalGPS;
 
     public MeshtasticReceiver(MeshtasticExternalGPS meshtasticExternalGPS) {
@@ -123,28 +124,6 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
             Log.d(TAG, "REC AUDIO DENIED");
         } else {
             this.audioPermissionGranted = true;
-            Log.d(TAG, "Initializing codec2 stuff");
-            // codec2 recorder/playback
-            this.c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
-            this.samplesBufSize = Codec2.getSamplesPerFrame(c2);
-            int minAudioBufSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-
-            // for voice playback
-            this.track = new AudioTrack.Builder()
-                    .setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build())
-                    .setAudioFormat(new AudioFormat.Builder()
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(RECORDER_SAMPLERATE)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                            .build())
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .setBufferSizeInBytes(minAudioBufSize * 10)
-                    .build();
-            this.track.setVolume(AudioTrack.getMaxVolume());
-            this.track.play();
         }
 
         this.mNotifyManager = (NotificationManager) getMapView().getContext().getSystemService(NOTIFICATION_SERVICE);
@@ -165,6 +144,10 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 .setAutoCancel(true)
                 .setOngoing(false)
                 .setContentIntent(appIntent);
+
+        // codec2 recorder/playback
+        this.c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        this.samplesBufSize = Codec2.getSamplesPerFrame(c2);
     }
 
     @Override
@@ -580,6 +563,72 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
         return chunks;
     }
+    private final ConcurrentLinkedQueue<short[]> playbackQueue = new ConcurrentLinkedQueue<>();
+    private boolean isPlaying = false;
+
+    public void playAudio(short[] audioData) {
+        playbackQueue.add(audioData);
+        processQueue();
+    }
+
+    private synchronized void processQueue() {
+        if (isPlaying) return; // Prevent multiple simultaneous playbacks
+        else {
+            int minAudioBufSize = AudioRecord.getMinBufferSize(
+                    RECORDER_SAMPLERATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+            );
+
+            // Ensure buffer size is a proper multiple of samplesBufSize * 2
+            int requiredSize = samplesBufSize * 2;
+            if (minAudioBufSize % requiredSize != 0) {
+                minAudioBufSize = ((minAudioBufSize / requiredSize) + 1) * requiredSize;
+            }
+
+            // for voice playback
+            this.track = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build())
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(RECORDER_SAMPLERATE)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build())
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .setBufferSizeInBytes(minAudioBufSize)
+                    .build();
+
+            this.track.setVolume(AudioTrack.getMaxVolume());
+            track.play();
+            isPlaying = true;
+
+            new Thread(() -> {
+                try {
+                    while (!playbackQueue.isEmpty()) {
+                        Log.d(TAG, "play queue size " + playbackQueue.size());
+                        short[] audioData = playbackQueue.poll();
+                        if (audioData == null) continue;
+                        track.write(audioData, 0, audioData.length); // Blocking call
+                    }
+
+                    // Ensure playback is fully stopped
+                    if (track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                        Log.d(TAG, "Stopping playback");
+                        track.stop();
+                        track.flush();
+                        track.release();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error during playback: " + e.getMessage());
+                } finally {
+                    isPlaying = false;
+                }
+            }).start();
+        }
+    }
 
     protected void receive(Intent intent) throws InvalidProtocolBufferException {
         DataPacket payload = intent.getParcelableExtra(MeshtasticMapComponent.EXTRA_PAYLOAD);
@@ -593,17 +642,21 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
             byte[] raw = payload.getBytes();
 
             // codec2 frame, short-circuit the rest of the data processing
-            if (audioPermissionGranted && (track.getState() == AudioTrack.PLAYSTATE_STOPPED) && (raw[0]&0xFF) == 0xC2) {
+            if (audioPermissionGranted  && (raw[0] & 0xFF) == 0xC2) {
                 Log.d(TAG, "Received codec2 frame");
+
                 // skip 0xC2 from data and split into frames of size c2FrameSize, and decode/play
                 List<byte[]> frames = extractChunks(slice(raw, 1, raw.length));
                 Log.d(TAG, "Frames: " + frames.size());
-                for(byte[] frame: frames) {
+
+                for (byte[] frame : frames) {
                     playbackBuf = new short[samplesBufSize];
                     Codec2.decode(c2, playbackBuf, frame);
-                    track.write(playbackBuf, 0, playbackBuf.length);
+                    playAudio(playbackBuf);
                 }
+
                 return;
+
             }
 
             String message = new String(payload.getBytes());
@@ -795,7 +848,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     transformer.transform(exiSource, result);
                     CotEvent cotEvent = CotEvent.parse(writer.toString());
 
-                    if (cotEvent != null && cotEvent.isValid()) {
+                    if (cotEvent.isValid()) {
                         Log.d(TAG, "Chunked CoT Received");
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
                         if (prefs.getBoolean("plugin_meshtastic_server", false)) {
@@ -819,7 +872,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     Transformer transformer = tf.newTransformer();
                     transformer.transform(exiSource, result);
                     CotEvent cotEvent = CotEvent.parse(writer.toString());
-                    if ( cotEvent != null && cotEvent.isValid()) {
+                    if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
                         if (prefs.getBoolean("plugin_meshtastic_server", false)) {
                             CotMapComponent.getExternalDispatcher().dispatch(cotEvent);
