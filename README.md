@@ -11,6 +11,7 @@ The plugin currently has the following settings:
 - Show all Meshtastic devices, this will place Sensor CoTs on the map for meshtastic devices
 - Do not show Meshtastic devices without GPS, this will not place Sensor CoTs for meshtastic devices without GPS (0,0)
 - Do not show your local node, this will not place a Sensor CoT on the map for the meshtastic device currently bound to the EUD
+- Use Meshtastic GPS as External GPS
 - Enable reporting rate controls, this will set ATAK's reporting rate to Constant and allow you to pick a interval from 1,5,10,20,30 minutes
 - Reporting rate, the menu to pick the interval in minutes
 - Only send PLI and Chat messages, this will only use the atak.protos which are optimized for speed (no libcotshrink)
@@ -23,3 +24,12 @@ The plugin currently has the following settings:
 # Video Walkthrough
 
 https://www.youtube.com/watch?v=7cn4ofiSd0A
+
+# Using Meshtastic device as external GPS device
+ATAK can use GPS positioning data of Meshtastic device as a source of GPS data for itself.
+In order for this to work following conditions have to be met:
+- Meshtastic device should have GPS receiver (for example LILYGO T-Beam)
+- Meshtastic device should be configured to send GPS positions (GPS enabled, intervals are configured properly)
+- ATAK should be configured to use external GPS (Settings -> Callsign and Device Preferences -> Device Preferences -> GPS Preferences -> GPS Option -> Ignore internal GPS / Use External or Network GPS Only)
+- Meshtastic Plugin should have External GPS setting enabled (Settings -> Tool Preferences -> Specific Tool Preferences -> Meshtastic Preferences -> Use Meshtastic GPS as External GPS)
+- Show all Meshtastic Devices should be off to avoid duplicating markers on the map
