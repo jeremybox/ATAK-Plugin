@@ -26,6 +26,8 @@ android {
     }
 
     defaultConfig {
+        namespace 'com.ustadmobile.codec2'
+
         compileSdkVersion 33
         minSdkVersion 28
         targetSdkVersion 33

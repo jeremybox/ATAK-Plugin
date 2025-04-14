@@ -10,7 +10,7 @@ buildscript {
 
 
     ext.PLUGIN_VERSION = "1.1.2"
-    ext.ATAK_VERSION = "4.10.0"
+    ext.ATAK_VERSION = "5.4.0"
 
     def takdevVersion = '2.+'
 
@@ -89,6 +89,8 @@ apply plugin: 'kotlinx-serialization'
 apply plugin: 'atak-takdev-plugin'
 
 android {
+    namespace 'com.atakmap.android.meshtastic.plugin'
+
     compileSdkVersion 33
     buildToolsVersion "34.0.0"
 
