@@ -608,7 +608,6 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
             new Thread(() -> {
                 try {
                     while (!playbackQueue.isEmpty()) {
-                        Log.d(TAG, "play queue size " + playbackQueue.size());
                         short[] audioData = playbackQueue.poll();
                         if (audioData == null) continue;
                         track.write(audioData, 0, audioData.length); // Blocking call
@@ -630,7 +629,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         }
     }
 
-    protected void receive(Intent intent) throws InvalidProtocolBufferException {
+    protected void receive(Intent intent) {
         DataPacket payload = intent.getParcelableExtra(MeshtasticMapComponent.EXTRA_PAYLOAD);
         if (payload == null) return;
         int dataType = payload.getDataType();
