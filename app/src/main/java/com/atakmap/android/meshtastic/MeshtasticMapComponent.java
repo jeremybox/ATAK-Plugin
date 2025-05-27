@@ -2,6 +2,7 @@
 package com.atakmap.android.meshtastic;
 
 import static android.content.Context.NOTIFICATION_SERVICE;
+import static com.atakmap.android.maps.MapView._mapView;
 import static com.atakmap.android.maps.MapView.getMapView;
 
 import android.app.NotificationChannel;
@@ -804,6 +805,8 @@ public class MeshtasticMapComponent extends DropDownMapComponent
         CotServiceRemote cotService = new CotServiceRemote();
         cotService.setCotEventListener(mr);
         cotService.connect(this);
+
+        _mapView.getSelfMarker().getTrackHeading();
 
         mServiceIntent = new Intent();
         mServiceIntent.setClassName(PACKAGE_NAME, CLASS_NAME);
