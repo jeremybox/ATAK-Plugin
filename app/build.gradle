@@ -230,9 +230,8 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 23
-        targetSdkVersion 36
-        compileSdkVersion 36
+        minSdkVersion 28
+        targetSdkVersion 33
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a", "x86"
         }
