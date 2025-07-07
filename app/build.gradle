@@ -9,10 +9,10 @@
 buildscript {
 
 
-    ext.PLUGIN_VERSION = "1.1.3"
-    ext.ATAK_VERSION = "4.10.0"
+    ext.PLUGIN_VERSION = "1.1.14"
+    ext.ATAK_VERSION = "5.4.0"
 
-    def takdevVersion = '2.+'
+    def takdevVersion = '3.+'
 
     ext.getValueFromPropertiesFile = { propFile, key ->
         if(!propFile.isFile() || !propFile.canRead())
@@ -61,6 +61,7 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.2'
+
         if(isDevKitEnabled()) {
             classpath "com.atakmap.gradle:atak-gradle-takdev:${takdevVersion}"
         } else {
@@ -100,9 +101,6 @@ android {
         }
     }
 
-    dexOptions {
-        jumboMode = true
-    }
     bundle {
         storeArchive {
             enable = false
@@ -206,6 +204,9 @@ android {
 
     sourceSets {
         main {
+
+	    // aidl is not being compiled when upgrading AGP 8+
+            aidl.srcDirs = ['src/main/aidl']
 
             // It is strongly encouraged that plugin developers do not modify the archiveBaseName, version code logic and version 
             // name logic to provide for consistency within the community.   
