@@ -120,3 +120,36 @@
 -dontwarn java.lang.instrument.ClassFileTransformer
 -dontwarn java.lang.ClassValue
 -dontwarn android.content.res.XmlResourceParser
+
+
+# Keep kotlin.Pair class
+-keep class kotlin.Pair { *; }
+
+# Keep your specific Meshtastic plugin classes if needed
+-keep class atakplugin.Meshtastic.** { *; }
+
+# Optional: Keep class metadata for Kotlin (important if you use reflection or serialization)
+-keepattributes *Annotation*
+-keep class kotlin.Metadata { *; }
+
+# If you're using Gson, Moshi, or Kotlinx.serialization
+-keep class **Kt$* { *; }
+-keepclassmembers class ** {
+    *** Companion;
+}
+
+# Keep all Kotlin text extension classes
+-keep class kotlin.text.** { *; }
+
+# Keep all Kotlin runtime (core reflection and intrinsics)
+-keep class kotlin.** { *; }
+-dontwarn kotlin.**
+
+# Retain Kotlin Metadata for reflection and serializers
+-keep class kotlin.Metadata { *; }
+-keepattributes KotlinMetadata
+-keepattributes *Annotation*
+
+# Needed for kotlinx.serialization to work properly
+-keep class kotlinx.serialization.** { *; }
+-dontwarn kotlinx.serialization.**
