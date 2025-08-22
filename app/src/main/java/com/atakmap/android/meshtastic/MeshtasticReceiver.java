@@ -302,6 +302,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     remarksDetail.setInnerText(new String(payload.getBytes()));
                     cotDetail.addChild(remarksDetail);
 
+                    CotDetail meshDetail = new CotDetail("__meshtastic");
+                    cotDetail.addChild(meshDetail);
+
                     if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
                         if (prefs.getBoolean("plugin_meshtastic_server", false)) {
@@ -358,6 +361,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     remarksDetail.setAttribute("time", time.toString());
                     remarksDetail.setInnerText(new String(payload.getBytes()));
                     cotDetail.addChild(remarksDetail);
+
+                    CotDetail meshDetail = new CotDetail("__meshtastic");
+                    cotDetail.addChild(meshDetail);
 
                     if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
@@ -1199,6 +1205,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     remarksDetail.setInnerText(geoChat.getMessage());
                     cotDetail.addChild(remarksDetail);
 
+                    CotDetail meshDetail = new CotDetail("__meshtastic");
+                    cotDetail.addChild(meshDetail);
+
                     CotEvent cotEvent = new CotEvent();
                     cotEvent.setDetail(cotDetail);
                     cotEvent.setUID("GeoChat." + deviceCallsign + getMapView().getSelfMarker().getUID() + msgId);
@@ -1207,9 +1216,6 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     cotEvent.setStale(time.addMinutes(10));
                     cotEvent.setType("b-t-f");
                     cotEvent.setHow("h-g-i-g-o");
-
-                    CotDetail meshDetail = new CotDetail("__meshtastic");
-                    cotDetail.addChild(meshDetail);
 
                     CotPoint cotPoint = new CotPoint(0, 0, CotPoint.UNKNOWN,
                             CotPoint.UNKNOWN, CotPoint.UNKNOWN);
