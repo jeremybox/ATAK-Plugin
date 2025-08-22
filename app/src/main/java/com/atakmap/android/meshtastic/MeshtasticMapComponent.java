@@ -1,29 +1,13 @@
-
 package com.atakmap.android.meshtastic;
 
-import static android.content.Context.NOTIFICATION_SERVICE;
-import static com.atakmap.android.maps.MapView._mapView;
-import static com.atakmap.android.maps.MapView.getMapView;
-
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.ServiceConnection;
-
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.os.IBinder;
-import android.os.RemoteException;
 import android.preference.PreferenceManager;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.core.app.NotificationCompat;
-
 
 import com.atakmap.android.chat.ChatManagerMapComponent;
 import com.atakmap.android.chat.GeoChatService;
@@ -31,25 +15,27 @@ import com.atakmap.android.data.URIContentManager;
 import com.atakmap.android.dropdown.DropDownMapComponent;
 import com.atakmap.android.ipc.AtakBroadcast;
 import com.atakmap.android.maps.MapView;
+import com.atakmap.android.meshtastic.cot.CotEventProcessor;
 import com.atakmap.android.meshtastic.plugin.R;
+import com.atakmap.android.meshtastic.service.MeshServiceManager;
+import com.atakmap.android.meshtastic.util.ChunkManager;
+import com.atakmap.android.meshtastic.util.Constants;
+import com.atakmap.android.meshtastic.util.NotificationHelper;
 import com.atakmap.app.preferences.ToolsPreferenceFragment;
+import com.atakmap.comms.CommsMapComponent;
 import com.atakmap.comms.CotServiceRemote;
+import com.atakmap.coremap.cot.event.CotDetail;
+import com.atakmap.coremap.cot.event.CotEvent;
 import com.atakmap.coremap.filesystem.FileSystemUtils;
 import com.atakmap.coremap.log.Log;
-import com.atakmap.coremap.cot.event.CotEvent;
-import com.atakmap.coremap.cot.event.CotDetail;
-import com.atakmap.comms.CommsMapComponent;
-
+import com.geeksville.mesh.ATAKProtos;
+import com.geeksville.mesh.DataPacket;
+import com.geeksville.mesh.MessageStatus;
 import com.geeksville.mesh.MeshProtos;
 import com.geeksville.mesh.MeshUser;
-import com.geeksville.mesh.MessageStatus;
-import com.geeksville.mesh.ATAKProtos;
 import com.geeksville.mesh.MyNodeInfo;
 import com.geeksville.mesh.NodeInfo;
 import com.geeksville.mesh.Portnums;
-import com.geeksville.mesh.DataPacket;
-import com.geeksville.mesh.IMeshService;
-
 import com.google.protobuf.ByteString;
 import com.siemens.ct.exi.core.EXIFactory;
 import com.siemens.ct.exi.core.helpers.DefaultEXIFactory;
@@ -57,849 +43,523 @@ import com.siemens.ct.exi.main.api.sax.EXIResult;
 
 import org.xml.sax.InputSource;
 import org.xml.sax.XMLReader;
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserException;
-import org.xmlpull.v1.XmlPullParserFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 
-
 public class MeshtasticMapComponent extends DropDownMapComponent
         implements CommsMapComponent.PreSendProcessor,
         SharedPreferences.OnSharedPreferenceChangeListener,
-        CotServiceRemote.ConnectionListener {
+        CotServiceRemote.ConnectionListener,
+        MeshServiceManager.ConnectionListener {
+    
     private static final String TAG = "MeshtasticMapComponent";
+    
+    // Components
     private Context pluginContext;
-
-    public MeshtasticMapComponent() {
-        meshtasticExternalGPS = new MeshtasticExternalGPS(new PositionToNMEAMapper());
-    }
-
-    @Override
-    public void onCotServiceConnected(Bundle bundle) {
-
-    }
-
-    @Override
-    public void onCotServiceDisconnected() {
-
-    }
-
-    public enum ServiceConnectionState {
-        DISCONNECTED,
-        CONNECTED
-    }
     private MeshtasticDropDownReceiver ddr;
-    private static IMeshService mMeshService;
-    private static ServiceConnection mServiceConnection;
-    private static Intent mServiceIntent;
-    public static ServiceConnectionState mConnectionState = ServiceConnectionState.DISCONNECTED;
-    public static final String PACKAGE_NAME = "com.geeksville.mesh";
-    public static final String CLASS_NAME = "com.geeksville.mesh.service.MeshService";
-    public static final String ACTION_MESH_CONNECTED = "com.geeksville.mesh.MESH_CONNECTED";
-    public static final String ACTION_MESH_DISCONNECTED = "com.geeksville.mesh.MESH_DISCONNECTED";
-    public static final String ACTION_RECEIVED_AUDIO_APP = "com.geeksville.mesh.RECEIVED.AUDIO_APP";
-    public static final String ACTION_RECEIVED_ATAK_FORWARDER = "com.geeksville.mesh.RECEIVED.ATAK_FORWARDER";
-    public static final String ACTION_RECEIVED_ATAK_PLUGIN = "com.geeksville.mesh.RECEIVED.ATAK_PLUGIN";
-    public static final String ACTION_RECEIVED_NODEINFO_APP = "com.geeksville.mesh.RECEIVED.NODEINFO_APP";
-    public static final String ACTION_RECEIVED_POSITION_APP = "com.geeksville.mesh.RECEIVED.POSITION_APP";
-    public static final String ACTION_TEXT_MESSAGE_APP = "com.geeksville.mesh.RECEIVED.TEXT_MESSAGE_APP";
-    public static final String ACTION_ALERT_APP = "com.geeksville.mesh.RECEIVED.ALERT_APP";
-
-    public static final String ACTION_NODE_CHANGE = "com.geeksville.mesh.NODE_CHANGE";
-    public static final String ACTION_MESSAGE_STATUS = "com.geeksville.mesh.MESSAGE_STATUS";
-    public static final String EXTRA_CONNECTED = "com.geeksville.mesh.Connected";
-    public static final String EXTRA_DISCONNECTED = "com.geeksville.mesh.disconnected";
-    public static final String EXTRA_PERMANENT = "com.geeksville.mesh.Permanent";
-    public static final String EXTRA_PAYLOAD = "com.geeksville.mesh.Payload";
-    public static final String EXTRA_NODEINFO = "com.geeksville.mesh.NodeInfo";
-    public static final String EXTRA_PACKET_ID = "com.geeksville.mesh.PacketId";
-    public static final String EXTRA_STATUS = "com.geeksville.mesh.Status";
-    public static final String STATE_CONNECTED = "CONNECTED";
-    public static final String STATE_DISCONNECTED = "DISCONNECTED";
-    public static final String STATE_DEVICE_SLEEP = "DEVICE_SLEEP";
-    public static final String ACTION_CONFIG_RATE = "com.atakmap.android.meshtastic.CONFIG";
-    public static MeshtasticWidget mw;
     private MeshtasticReceiver mr;
     private final MeshtasticExternalGPS meshtasticExternalGPS;
     private MeshtasticSender meshtasticSender;
-    private static NotificationManager mNotifyManager;
-    private static NotificationCompat.Builder mBuilder;
-    private static NotificationChannel mChannel;
-    private static int NotificationId = 42069;
-    private static SharedPreferences prefs;
-    private static SharedPreferences.Editor editor;
-    private static final int chunkSize = 200;
-
-    public static void sendToMesh(DataPacket dp) {
-        if (mMeshService != null) {
-            Log.d(TAG, "sending to mesh " + dp.getTo());
-            try {
-                mMeshService.send(dp);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
+    
+    // Services and Managers
+    private MeshServiceManager meshServiceManager;
+    private NotificationHelper notificationHelper;
+    private ChunkManager chunkManager;
+    private CotEventProcessor cotEventProcessor;
+    
+    // UI Components
+    public static MeshtasticWidget mw;
+    
+    // Connection state management
+    public static MeshServiceManager.ServiceConnectionState mConnectionState = MeshServiceManager.ServiceConnectionState.DISCONNECTED;
+    
+    // Preferences
+    private SharedPreferences prefs;
+    private SharedPreferences.Editor editor;
+    
+    public MeshtasticMapComponent() {
+        meshtasticExternalGPS = new MeshtasticExternalGPS(new PositionToNMEAMapper());
+        chunkManager = new ChunkManager();
+        cotEventProcessor = new CotEventProcessor();
     }
-
-    public static List<byte[]> divideArray(byte[] source, int chunksize) {
-
-        List<byte[]> result = new ArrayList<>();
-        int start = 0;
-        while (start < source.length) {
-            int end = Math.min(source.length, start + chunksize);
-            try {
-                result.add(Arrays.copyOfRange(source, start, end));
-            } catch (Exception e) {
-                e.printStackTrace();
-                Log.d(TAG, "Array copy failed in divideArray");
-            }
-            start += chunksize;
-        }
-
-        return result;
-    }
-
-    public static boolean sendFile(File f) {
-
-        byte[] fileBytes;
-        try {
-            fileBytes = FileSystemUtils.read(f);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-
-        int progress = 0;
-
-        List<byte[]> chunkList = divideArray(fileBytes, chunkSize);
-
-        int chunks = (int) Math.floor(fileBytes.length / chunkSize);
-        chunks++;
-        Log.d(TAG, "Sending " + chunks);
-        byte[] chunk_hdr = String.format(Locale.US, "CHK_%d_", fileBytes.length).getBytes();
-        int i = 0;
-
-        int channel = MeshtasticReceiver.getChannelIndex();
-
-        HashMap<String, byte[]> chunkMap = new HashMap<>();
-        for (byte[] c : chunkList) {
-            byte[] combined = new byte[chunk_hdr.length + c.length];
-            try {
-                System.arraycopy(chunk_hdr, 0, combined, 0, chunk_hdr.length);
-                System.arraycopy(c, 0, combined, chunk_hdr.length, c.length);
-            } catch (Exception e) {
-                e.printStackTrace();
-                return false;
-            }
-            try {
-                // send out 1 chunk
-                DataPacket dp;
-                i = mMeshService.getPacketId();
-                Log.d(TAG, "Chunk ID: " + i);
-                chunkMap.put(String.valueOf(i), combined);
-                editor.putInt("plugin_meshtastic_chunk_id", i);
-                editor.putBoolean("plugin_meshtastic_chunk_ACK", true);
-                editor.apply();
-
-                INNER:
-                for (int j=0; j<1; j++) {
-                    dp = new DataPacket(DataPacket.ID_BROADCAST, combined, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), i, MessageStatus.UNKNOWN, 3, channel, true);
-                    sendToMesh(dp);
-                    while (prefs.getBoolean("plugin_meshtastic_chunk_ACK", false)) {
-                        try {
-                            Thread.sleep(250);
-                            if (prefs.getBoolean("plugin_meshtastic_chunk_ERR", false)) {
-                                Log.d(TAG, "Chunk ERR received, retransmitting message ID: " + i);
-                                j=0;
-                                break INNER;
-                            }
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }
-
-                // caclulate progress
-                //zi = (xi – min(x)) / (max(x) – min(x)) * 100
-                mBuilder.setProgress(100, (int) Math.floor((++progress - 1) / (chunkList.size() - 1) * 100), false);
-                mNotifyManager.notify(NotificationId, mBuilder.build());
-            } catch (RemoteException e) {
-                e.printStackTrace();
-                return false;
-            }
-        }
-        // When the loop is finished, updates the notification
-        mBuilder.setContentText("Transfer complete")
-                // Removes the progress bar
-                .setProgress(0,0,false);
-        mNotifyManager.notify(NotificationId, mBuilder.build());
-
-        // We're done chunking
-        DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, new byte[]{'E', 'N', 'D'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, 3, channel, true);
-        sendToMesh(dp);
-
-        return true;
-    }
-
-    public static void setOwner(MeshUser meshUser) {
-        try {
-            if (mMeshService != null)
-                mMeshService.setOwner(meshUser);
-        } catch (RemoteException e) {
-            e.printStackTrace();
-        }
-    }
-    public static void setChannel(byte[] channel) {
-        try {
-            if (mMeshService != null)
-                mMeshService.setChannel(channel);
-        } catch (RemoteException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void setConfig(byte[] config) {
-        try {
-            if (mMeshService != null)
-                mMeshService.setConfig(config);
-        } catch (RemoteException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static byte[] getChannelSet() {
-        try {
-            if (mMeshService != null)
-                return mMeshService.getChannelSet();
-        } catch (RemoteException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    public static byte[] getConfig() {
-        try {
-            if (mMeshService != null)
-                return mMeshService.getConfig();
-        } catch (RemoteException e) {
-            e.printStackTrace();
-            Log.d(TAG, "getConfig failed");
-        }
-        return null;
-    }
-
-    public static List<NodeInfo> getNodes() {
-        try {
-            if (mMeshService != null)
-                return mMeshService.getNodes();
-        } catch (Exception e) {
-            e.printStackTrace();
-            Log.d(TAG, "getNodes failed");
-        }
-        return null;
-    }
-
-    public static MyNodeInfo getMyNodeInfo() {
-        try {
-            if (mMeshService != null)
-                return mMeshService.getMyNodeInfo();
-        } catch (RemoteException e) {
-            e.printStackTrace();
-            Log.d(TAG, "getMyNodeInfo failed");
-        }
-        return null;
-    }
-
-    public static String getMyNodeID() {
-        try {
-            if (mMeshService != null)
-                return mMeshService.getMyId();
-        } catch (RemoteException e) {
-            e.printStackTrace();
-            Log.d(TAG, "getMyNodeID failed");
-        }
-        return "";
-    }
-
-    public static IMeshService getMeshService() {
-        return mMeshService;
-    }
-
+    
     @Override
-    public void processCotEvent(CotEvent cotEvent, String[] strings) {
-        
-        Log.d(TAG, "processCotEvent");
-
-        CotDetail cotDetail = cotEvent.getDetail();
-        if (cotDetail.getChild("__meshtastic") != null) {
-            Log.d(TAG, "Meshtastic message, don't forward");
-            return;
-        }
-
-        if (mConnectionState == ServiceConnectionState.DISCONNECTED) {
-            Log.d(TAG, "Service not connected");
-            return;
-        } else if (prefs.getBoolean("plugin_meshtastic_file_transfer", false)) {
-            Log.d(TAG, "File transfer in progress");
-            return;
-        } else if (prefs.getBoolean("plugin_meshtastic_chunking", false)) {
-            Log.d(TAG, "Chunking in progress");
-            return;
-        }
-
-        final DataPacket[] dp = new DataPacket[1];
-
-        int hopLimit = MeshtasticReceiver.getHopLimit();
-        int channel = MeshtasticReceiver.getChannelIndex();
-
-        Log.d(TAG, cotEvent.toString());
-        Log.d(TAG, cotDetail.toString());
-
-        int eventType = -1;
-        double divisor = 1e-7;
-        XmlPullParserFactory factory = null;
-        XmlPullParser xpp = null;
-        String callsign = null;
-        String deviceCallsign = null;
-        double alt = getMapView().getSelfMarker().getPoint().getAltitude();
-        double lat = getMapView().getSelfMarker().getPoint().getLatitude();
-        double lng = getMapView().getSelfMarker().getPoint().getLongitude();
-        //if (lat == 0 && lng == 0) {
-        //    return;
-        //} else {
-            Log.d(TAG, "callsign: " + getMapView().getDeviceCallsign());
-            Log.d(TAG, "device callsign: " + getMapView().getSelfMarker().getUID());
-            Log.d(TAG, String.format("ALT:%f LAT:%f LNG:%f", alt, lat, lng));
-        //}
-
-        try {
-            factory = XmlPullParserFactory.newInstance();
-            factory.setNamespaceAware(true);
-            xpp = factory.newPullParser();
-            xpp.setInput(new StringReader(cotDetail.toString()));
-            eventType = xpp.getEventType();
-        } catch (XmlPullParserException e) {
-            e.printStackTrace();
-            return;
-        }
-/*
-        if (cotEvent.getUID().startsWith("!") && cotEvent.getType().equals("a-f-G-E-S")) {
-            Log.d(TAG, "Don't forward Meshtastic Nodes");
-            return;
-        } else */if (cotEvent.getUID().equals(getMapView().getSelfMarker().getUID())) {
-            // self PLI report
-            /*
-            <?xml version='1.0' encoding='UTF-8' standalone='yes'?>
-            <event version='2.0' uid='ANDROID-e612f0e922b56a63' type='a-f-G-U-C' time='2024-02-06T19:27:18.246Z' start='2024-02-06T19:27:18.246Z' stale='2024-02-06T19:33:33.246Z' how='h-e'>
-            <point lat='8.8813837' lon='-3.570282' hae='9999999.0' ce='9999999.0' le='9999999.0' />
-            <detail>
-                <takv os='34' version='4.8.1.5 (475f848f).1675356844-CIV' device='GOOGLE PIXEL 8' platform='ATAK-CIV'/>
-                <contact endpoint='0.0.0.0:4242:tcp' phone='+16802809647' callsign='FALKE'/>
-                <uid Droid='FALKE'/>
-                <precisionlocation altsrc='???' geopointsrc='USER'/>
-                <__group role='Team Member' name='Cyan'/>
-                <status battery='100'/>
-                <track course='45.77672420041893' speed='0.0'/>
-            </detail>
-            </event>
-             */
-            Log.d(TAG, "Sending self marker PLI to Meshtastic");
-
-            int battery = 0, course = 0, speed = 0;
-            String role = null, name = null;
-
-            try {
-                while (eventType != XmlPullParser.END_DOCUMENT) {
-                    if (eventType == XmlPullParser.START_TAG) {
-                        if (xpp.getName().equalsIgnoreCase("contact")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "Contact has " + attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("callsign"))
-                                    callsign = xpp.getAttributeValue(i);
-                            }
-                        } else if (xpp.getName().equalsIgnoreCase("__group")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "__group has " + attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("role"))
-                                    role = xpp.getAttributeValue(i);
-                                else if (xpp.getAttributeName(i).equalsIgnoreCase("name"))
-                                    name = xpp.getAttributeValue(i);
-                            }
-                        } else if (xpp.getName().equalsIgnoreCase("status")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "status has " + attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("battery"))
-                                    battery = Integer.parseInt(xpp.getAttributeValue(i));
-                            }
-                        } else if (xpp.getName().equalsIgnoreCase("track")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "track has " + attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("course"))
-                                    course = Double.valueOf(xpp.getAttributeValue(i)).intValue();
-                                else if (xpp.getAttributeName(i).equalsIgnoreCase("speed"))
-                                    speed = Double.valueOf(xpp.getAttributeValue(i)).intValue();
-                            }
-                        }
-                    }
-                    eventType = xpp.next();
-                }
-            } catch (XmlPullParserException | IOException e) {
-                e.printStackTrace();
-                return;
-            }
-
-            ATAKProtos.Contact.Builder contact = ATAKProtos.Contact.newBuilder();
-            contact.setCallsign(callsign);
-            contact.setDeviceCallsign(cotEvent.getUID());
-
-            ATAKProtos.Group.Builder group = ATAKProtos.Group.newBuilder();
-            group.setRole(ATAKProtos.MemberRole.valueOf(role.replace(" ", "")));
-            group.setTeam(ATAKProtos.Team.valueOf(name.replace(" ", "")));
-
-            ATAKProtos.Status.Builder status = ATAKProtos.Status.newBuilder();
-            status.setBattery(battery);
-
-            ATAKProtos.PLI.Builder pli = ATAKProtos.PLI.newBuilder();
-            pli.setAltitude(Double.valueOf(alt).intValue());
-            pli.setLatitudeI((int) (lat / divisor));
-            pli.setLongitudeI((int) (lng / divisor));
-            pli.setCourse(course);
-            pli.setSpeed(speed);
-
-            ATAKProtos.TAKPacket.Builder tak_packet = ATAKProtos.TAKPacket.newBuilder();
-            tak_packet.setContact(contact);
-            tak_packet.setStatus(status);
-            tak_packet.setGroup(group);
-            tak_packet.setPli(pli);
-
-            Log.d(TAG, "Total wire size for TAKPacket: " + tak_packet.build().toByteArray().length);
-            Log.d(TAG, "Sending: " + tak_packet.build().toString());
-
-            dp[0] = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
-            sendToMesh(dp[0]);
-        // GeoChat All Chat Rooms
-        } else if (cotEvent.getType().equalsIgnoreCase("b-t-f") && cotEvent.getUID().contains("All Chat Rooms")) {
-            Log.d(TAG, "Sending All Chat Rooms to Meshtastic");
-            /*
-            <?xml version='1.0' encoding='UTF-8' standalone='yes'?>
-            <event version='2.0' uid='GeoChat.ANDROID-e612f0e922b56a63.All Chat Rooms.d22bcfac-2c28-4e0c-8133-172928ba59b7' type='b-t-f' time='2024-02-07T19:02:09.192Z' start='2024-02-07T19:02:09.192Z' stale='2024-02-08T19:02:09.192Z' how='h-g-i-g-o'>
-            <point lat='40.2392345' lon='-19.7690137' hae='9999999.0' ce='9999999.0' le='9999999.0' />
-                <detail>
-                    <__chat parent='RootContactGroup' groupOwner='false' messageId='d22bcfac-2c28-4e0c-8133-172928ba59b7' chatroom='All Chat Rooms' id='All Chat Rooms' senderCallsign='FALKE lol'>
-                        <chatgrp uid0='ANDROID-e612f0e922b56a63' uid1='All Chat Rooms' id='All Chat Rooms'/>
-                    </__chat>
-                    <link uid='ANDROID-e612f0e922b56a63' type='a-f-G-U-C' relation='p-p'/>
-                    <__serverdestination destinations='0.0.0.0:4242:tcp:ANDROID-e612f0e922b56a63'/>
-                    <remarks source='BAO.F.ATAK.ANDROID-e612f0e922b56a63' to='All Chat Rooms' time='2024-02-07T19:02:09.192Z'>lol</remarks>
-                </detail>
-            </event>
-             */
-            String message = null;
-            try {
-                while (eventType != XmlPullParser.END_DOCUMENT) {
-                    if (eventType == XmlPullParser.START_TAG) {
-                        Log.d(TAG, xpp.getName());
-                        if (xpp.getName().equalsIgnoreCase("remarks")) {
-                            if (xpp.next() == XmlPullParser.TEXT)
-                                message = xpp.getText();
-                        } else if (xpp.getName().equalsIgnoreCase("__chat")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "__chat has " + +attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("senderCallsign"))
-                                    callsign = xpp.getAttributeValue(i);
-                            }
-                        } else if (xpp.getName().equalsIgnoreCase("link")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "link has " + +attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("uid"))
-                                    deviceCallsign = xpp.getAttributeValue(i);
-                            }
-                        }
-                    }
-                    eventType = xpp.next();
-                }
-
-            } catch (XmlPullParserException | IOException e) {
-                e.printStackTrace();
-            }
-
-            ATAKProtos.Contact.Builder contact = ATAKProtos.Contact.newBuilder();
-            contact.setCallsign(callsign);
-            contact.setDeviceCallsign(deviceCallsign);
-
-            ATAKProtos.GeoChat.Builder geochat = ATAKProtos.GeoChat.newBuilder();
-            geochat.setMessage(message);
-            geochat.setTo("All Chat Rooms");
-
-            ATAKProtos.TAKPacket.Builder tak_packet = ATAKProtos.TAKPacket.newBuilder();
-            tak_packet.setContact(contact);
-            tak_packet.setChat(geochat);
-
-            Log.d(TAG, "Total wire size for TAKPacket: " + tak_packet.build().toByteArray().length);
-            Log.d(TAG, "Sending: " + tak_packet.build().toString());
-
-            dp[0] = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
-            sendToMesh(dp[0]);
-
-        } else if (cotEvent.getType().equalsIgnoreCase("b-t-f")) {
-            Log.d(TAG, "Sending DM Chat to Meshtastic");
-                    /*
-                    <?xml version='1.0' encoding='UTF-8' standalone='yes'?>
-                    <event version='2.0' uid='GeoChat.ANDROID-e612f0e922b56a63.ANDROID-b5c2b8340a0a2cd5.23c1f487-7111-4995-89f5-7709a9c99518' type='b-t-f' time='2024-02-07T19:04:06.683Z' start='2024-02-07T19:04:06.683Z' stale='2024-02-08T19:04:06.683Z' how='h-g-i-g-o'>
-                    <point lat='40.2392345' lon='-19.7690137' hae='9999999.0' ce='9999999.0' le='9999999.0' />
-                    <detail>
-                        <__chat parent='RootContactGroup' groupOwner='false' messageId='23c1f487-7111-4995-89f5-7709a9c99518' chatroom='HUSKER lol' id='ANDROID-b5c2b8340a0a2cd5' senderCallsign='FALKE lol'>
-                            <chatgrp uid0='ANDROID-e612f0e922b56a63' uid1='ANDROID-b5c2b8340a0a2cd5' id='ANDROID-b5c2b8340a0a2cd5'/>
-                        </__chat>
-                        <link uid='ANDROID-e612f0e922b56a63' type='a-f-G-U-C' relation='p-p'/>
-                        <__serverdestination destinations='0.0.0.0:4242:tcp:ANDROID-e612f0e922b56a63'/>
-                        <remarks source='BAO.F.ATAK.ANDROID-e612f0e922b56a63' to='ANDROID-b5c2b8340a0a2cd5' time='2024-02-07T19:04:06.683Z'>at breach</remarks>
-                    </detail>
-                    </event>
-                     */
-            String message = null;
-            String to = null;
-            try {
-                while (eventType != XmlPullParser.END_DOCUMENT) {
-                    if (eventType == XmlPullParser.START_TAG) {
-                        Log.d(TAG, xpp.getName());
-                        if (xpp.getName().equalsIgnoreCase("remarks")) {
-                            if (xpp.next() == XmlPullParser.TEXT)
-                                message = xpp.getText();
-                        } else if (xpp.getName().equalsIgnoreCase("__chat")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "__chat has " + +attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("senderCallsign"))
-                                    callsign = xpp.getAttributeValue(i);
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("id"))
-                                    to = xpp.getAttributeValue(i);
-                            }
-                        } else if (xpp.getName().equalsIgnoreCase("link")) {
-                            int attributeCount = xpp.getAttributeCount();
-                            Log.d(TAG, "link has " + +attributeCount);
-                            for (int i = 0; i < attributeCount; i++) {
-                                if (xpp.getAttributeName(i).equalsIgnoreCase("uid"))
-                                    deviceCallsign = xpp.getAttributeValue(i);
-                            }
-                        }
-                    }
-                    eventType = xpp.next();
-                }
-
-            } catch (XmlPullParserException | IOException e) {
-                e.printStackTrace();
-            }
-
-            if (to == null) return;
-
-            ATAKProtos.Contact.Builder contact = ATAKProtos.Contact.newBuilder();
-            contact.setCallsign(callsign);
-            contact.setDeviceCallsign(deviceCallsign);
-
-            ATAKProtos.GeoChat.Builder geochat = ATAKProtos.GeoChat.newBuilder();
-            geochat.setMessage(message);
-            geochat.setTo(to);
-
-            ATAKProtos.TAKPacket.Builder tak_packet = ATAKProtos.TAKPacket.newBuilder();
-            tak_packet.setContact(contact);
-            tak_packet.setChat(geochat);
-
-            Log.d(TAG, "Total wire size for TAKPacket: " + tak_packet.build().toByteArray().length);
-            Log.d(TAG, "Sending: " + tak_packet.build().toString());
-
-            // if "to" starts with !, its probably a meshtastic ID, so don't send it to ^all but the actual ID
-            if (to.startsWith("!")) {
-                Log.d(TAG, "Sending to Meshtastic ID: " + to);
-                dp[0] = new DataPacket(to, MeshProtos.Data.newBuilder().setPayload(ByteString.copyFrom(message.getBytes(StandardCharsets.UTF_8))).build().toByteArray(),Portnums.PortNum.TEXT_MESSAGE_APP_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
-            } else {
-                Log.d(TAG, "Sending to ^all");
-                dp[0] = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
-            }
-            sendToMesh(dp[0]);
-
-        } else {
-            if (prefs.getBoolean("plugin_meshtastic_plichat_only", false)) {
-                Log.d(TAG, "PLI/Chat Only");
-                return;
-            } else if (prefs.getBoolean("plugin_meshtastic_chunking", false)) {
-                Log.d(TAG, "Chunking in progress");
-                return;
-            }
-
-            new Thread(() -> {
-                Log.d(TAG, "Sending Chunks");
-
-                byte[] cotAsBytes;
-
-                try {
-                    EXIFactory exiFactory = DefaultEXIFactory.newInstance();
-                    ByteArrayOutputStream osEXI = new ByteArrayOutputStream();
-                    EXIResult exiResult = new EXIResult(exiFactory);
-                    exiResult.setOutputStream(osEXI);
-                    SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
-                    SAXParser newSAXParser = saxParserFactory.newSAXParser();
-                    XMLReader xmlReader = newSAXParser.getXMLReader();
-                    xmlReader.setContentHandler(exiResult.getHandler());
-                    InputSource stream = new InputSource(new StringReader(cotEvent.toString()));
-                    xmlReader.parse(stream); // parse XML input
-                    cotAsBytes = osEXI.toByteArray();
-                    osEXI.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    return;
-                }
-
-                Log.d(TAG, "Size: " + cotAsBytes.length);
-
-                if (cotAsBytes.length < 236) {
-                    Log.d(TAG, "Small send");
-                    dp[0] = new DataPacket(DataPacket.ID_BROADCAST, cotAsBytes, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
-                    sendToMesh(dp[0]);
-                }
-
-                editor.putBoolean("plugin_meshtastic_chunking", true);
-                editor.apply();
-
-                List<byte[]> chunkList = divideArray(cotAsBytes, chunkSize);
-                final AtomicInteger[] i = {new AtomicInteger()};
-                int chunks = (int) Math.floor(cotAsBytes.length / chunkSize);
-                chunks++;
-                Log.d(TAG, "Sending " + chunks);
-
-                byte[] chunk_hdr = String.format(Locale.US, "CHK_%d_", cotAsBytes.length).getBytes();
-                HashMap<String, byte[]> chunkMap = new HashMap<>();
-
-                // send all chunks, 1 at a time waiting for ack
-                for (byte[] c : chunkList) {
-                    byte[] combined = new byte[chunk_hdr.length + c.length];
-                    try {
-                        System.arraycopy(chunk_hdr, 0, combined, 0, chunk_hdr.length);
-                        System.arraycopy(c, 0, combined, chunk_hdr.length, c.length);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        return;
-                    }
-
-                    try {
-                        // send out 1 chunk wait for ack
-                        i[0].set(mMeshService.getPacketId());
-                        Log.d(TAG, "Chunk ID: " + i[0]);
-                        chunkMap.put(String.valueOf(i[0].get()), combined);
-                        editor.putInt("plugin_meshtastic_chunk_id", i[0].get());
-                        editor.putBoolean("plugin_meshtastic_chunk_ACK", true);
-                        editor.apply();
-
-                        int tries = 0;
-                        INNER:
-                        for (int j = 0; j < 1; j++) {
-                            dp[0] = new DataPacket(DataPacket.ID_BROADCAST, combined, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), i[0].get(), MessageStatus.UNKNOWN, hopLimit, channel, true);
-                            sendToMesh(dp[0]);
-                            while (prefs.getBoolean("plugin_meshtastic_chunk_ACK", false)) {
-                                Thread.sleep(250);
-                                tries++;
-                                if (tries > 20) {
-                                    throw new Exception("Timeout");
-                                }
-                                if (prefs.getBoolean("plugin_meshtastic_chunk_ERR", false)) {
-                                    Log.d(TAG, "Chunk ERR received, retransmitting message ID: " + i[0]);
-                                    j = 0;
-                                    break INNER;
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        Log.d(TAG, "Chunking failed, aborting");
-                        editor.putBoolean("plugin_meshtastic_chunking", false);
-                        editor.apply();
-                        e.printStackTrace();
-                        return;
-                    }
-                }
-                // We're done chunking
-                dp[0] = new DataPacket(DataPacket.ID_BROADCAST, new byte[]{'E', 'N', 'D'}, Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, 3, channel, true);
-                sendToMesh(dp[0]);
-                editor.putBoolean("plugin_meshtastic_chunking", false);
-                editor.apply();
-            }).start();
+    public void onCotServiceConnected(Bundle bundle) {
+        // Implementation if needed
+    }
+    
+    @Override
+    public void onCotServiceDisconnected() {
+        // Implementation if needed
+    }
+    
+    @Override
+    public void onServiceConnected() {
+        if (mw != null) {
+            mw.setIcon("green");
         }
     }
+    
+    @Override
+    public void onServiceDisconnected() {
+        if (mw != null) {
+            mw.setIcon("red");
+        }
+    }
+    
+    @Override
     public void onCreate(final Context context, Intent intent, MapView view) {
-
         CommsMapComponent.getInstance().registerPreSendProcessor(this);
         context.setTheme(R.style.ATAKPluginTheme);
         pluginContext = context;
-
-        mNotifyManager =
-                (NotificationManager) view.getContext()
-                        .getSystemService(NOTIFICATION_SERVICE);
-        mChannel = new NotificationChannel(
-                "com.atakmap.android.meshtastic",
-                "Meshtastic Notifications",
-                NotificationManager.IMPORTANCE_DEFAULT); // correct Constant
-        mChannel.setSound(null, null);
-        mNotifyManager.createNotificationChannel(mChannel);
-
-        Intent atakFrontIntent = new Intent();
-        atakFrontIntent.setComponent(new ComponentName(
-                "com.atakmap.app.civ", "com.atakmap.app.ATAKActivity"));
-        atakFrontIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        atakFrontIntent.putExtra("internalIntent",
-                new Intent("com.atakmap.android.meshtastic.SHOW_PLUGIN"));
-        PendingIntent appIntent = PendingIntent.getActivity(view.getContext(), 0, atakFrontIntent, PendingIntent.FLAG_IMMUTABLE);
-
-        mBuilder = new NotificationCompat.Builder(pluginContext, "com.atakmap.android.meshtastic");
-        mBuilder.setContentTitle("Meshtastic File Transfer")
-                .setContentText("Transfer in progress")
-                .setSmallIcon(R.drawable.ic_launcher)
-                .setAutoCancel(true)
-                .setOngoing(false)
-                .setContentIntent(appIntent);
-
+        
+        // Initialize helpers
+        notificationHelper = NotificationHelper.getInstance(view.getContext());
+        meshServiceManager = MeshServiceManager.getInstance(view.getContext());
+        meshServiceManager.setConnectionListener(this);
+        
+        // Setup dropdown receiver
         Log.d(TAG, "registering the plugin filter");
         ddr = new MeshtasticDropDownReceiver(view, context);
         AtakBroadcast.DocumentedIntentFilter ddFilter = new AtakBroadcast.DocumentedIntentFilter();
         ddFilter.addAction(MeshtasticDropDownReceiver.SHOW_PLUGIN);
         registerDropDownReceiver(ddr, ddFilter);
-
-        prefs = new ProtectedSharedPreferences(PreferenceManager.getDefaultSharedPreferences(MapView.getMapView().getContext()));
+        
+        // Setup preferences
+        prefs = new ProtectedSharedPreferences(
+            PreferenceManager.getDefaultSharedPreferences(MapView.getMapView().getContext())
+        );
         editor = prefs.edit();
-        editor.putBoolean("plugin_meshtastic_file_transfer", false);
-        editor.putBoolean("plugin_meshtastic_chunking", false);
+        editor.putBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false);
+        editor.putBoolean(Constants.PREF_PLUGIN_CHUNKING, false);
         editor.apply();
         prefs.registerOnSharedPreferenceChangeListener(this);
-
-        int gpsPort = prefs.getInt("listenPort", 4349); // External GPS port
-        boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+        
+        // Setup GPS if enabled
+        int gpsPort = prefs.getInt(Constants.PREF_LISTEN_PORT, Constants.DEFAULT_GPS_PORT);
+        boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean(Constants.PREF_PLUGIN_EXTERNAL_GPS, false);
         if (shouldUseMeshtasticExternalGPS) {
             meshtasticExternalGPS.start(gpsPort);
         }
-
+        
+        // Setup receiver
         mr = new MeshtasticReceiver(meshtasticExternalGPS);
         IntentFilter intentFilter = getIntentFilter();
-
         view.getContext().registerReceiver(mr, intentFilter, Context.RECEIVER_EXPORTED);
-
+        
+        // Setup CoT service
         CotServiceRemote cotService = new CotServiceRemote();
         cotService.setCotEventListener(mr);
         cotService.connect(this);
-
-        _mapView.getSelfMarker().getTrackHeading();
-
-        mServiceIntent = new Intent();
-        mServiceIntent.setClassName(PACKAGE_NAME, CLASS_NAME);
-
-        URIContentManager.getInstance().registerSender(meshtasticSender = new MeshtasticSender(view, pluginContext));
-
-        mServiceConnection = new ServiceConnection() {
-            public void onServiceConnected(ComponentName className, IBinder service) {
-                Log.v(TAG, "Service connected");
-                mMeshService = IMeshService.Stub.asInterface(service);
-                mConnectionState = ServiceConnectionState.CONNECTED;
-                mw.setIcon("green");
-            }
-
-            public void onServiceDisconnected(ComponentName className) {
-                Log.e(TAG, "Service disconnected");
-                mMeshService = null;
-                mConnectionState = ServiceConnectionState.DISCONNECTED;
-                mw.setIcon("red");
-            }
-        };
         
-        boolean ret = view.getContext().bindService(mServiceIntent, mServiceConnection, Context.BIND_AUTO_CREATE);
-        if (!ret) {
-            Toast.makeText(getMapView().getContext(), "Failed to bind to Meshtastic IMeshService", Toast.LENGTH_LONG).show();
-        }
-
+        // Setup URI content manager
+        URIContentManager.getInstance().registerSender(
+            meshtasticSender = new MeshtasticSender(view, pluginContext)
+        );
+        
+        // Connect to mesh service
+        meshServiceManager.connect();
+        
+        // Setup widget
         mw = new MeshtasticWidget(context, view);
-
+        
+        // Register preferences fragment
         ToolsPreferenceFragment.register(
-                new ToolsPreferenceFragment.ToolPreference(
-                        pluginContext.getString(R.string.preferences_title),
-                        pluginContext.getString(R.string.preferences_summary),
-                        pluginContext.getString(R.string.meshtastic_preferences),
-                        pluginContext.getResources().getDrawable(R.drawable.ic_launcher),
-                        new PluginPreferencesFragment(
-                                pluginContext)));
+            new ToolsPreferenceFragment.ToolPreference(
+                pluginContext.getString(R.string.preferences_title),
+                pluginContext.getString(R.string.preferences_summary),
+                pluginContext.getString(R.string.meshtastic_preferences),
+                pluginContext.getResources().getDrawable(R.drawable.ic_launcher),
+                new PluginPreferencesFragment(pluginContext)
+            )
+        );
     }
-
-    @NonNull
-    private static IntentFilter getIntentFilter() {
-        IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(ACTION_RECEIVED_ATAK_FORWARDER);
-        intentFilter.addAction("com.geeksville.mesh.RECEIVED.257");
-        intentFilter.addAction(ACTION_RECEIVED_ATAK_PLUGIN);
-        intentFilter.addAction("com.geeksville.mesh.RECEIVED.72");
-        intentFilter.addAction(ACTION_NODE_CHANGE);
-        intentFilter.addAction(ACTION_MESH_CONNECTED);
-        intentFilter.addAction(ACTION_MESH_DISCONNECTED);
-        intentFilter.addAction(ACTION_RECEIVED_NODEINFO_APP);
-        intentFilter.addAction(ACTION_RECEIVED_POSITION_APP);
-        intentFilter.addAction(ACTION_MESSAGE_STATUS);
-        intentFilter.addAction(ACTION_TEXT_MESSAGE_APP);
-        return intentFilter;
-    }
-
-    public static boolean reconnect() throws RemoteException {
-        boolean ret = getMapView().getContext().bindService(mServiceIntent, mServiceConnection, Context.BIND_AUTO_CREATE);
-        if (!ret) {
-            Toast.makeText(getMapView().getContext(), "Failed to bind to Meshtastic IMeshService", Toast.LENGTH_LONG).show();
-        }
-        return ret;
-    }
+    
     @Override
     protected void onDestroyImpl(Context context, MapView view) {
-        view.getContext().unbindService(mServiceConnection);
+        meshServiceManager.disconnect();
         view.getContext().unregisterReceiver(mr);
-        mw.destroy();
+        if (mw != null) {
+            mw.destroy();
+        }
         prefs.unregisterOnSharedPreferenceChangeListener(this);
         ToolsPreferenceFragment.unregister(pluginContext.getString(R.string.preferences_title));
         URIContentManager.getInstance().unregisterSender(meshtasticSender);
         meshtasticExternalGPS.stop();
     }
+    
+    @Override
+    public void processCotEvent(CotEvent cotEvent, String[] strings) {
+        Log.d(TAG, "processCotEvent");
+        
+        // Check if this is a Meshtastic message (don't forward back)
+        CotDetail cotDetail = cotEvent.getDetail();
+        if (cotDetail != null && cotDetail.getChild("__meshtastic") != null) {
+            Log.d(TAG, "Meshtastic message, don't forward");
+            return;
+        }
+        
+        // Check service connection
+        if (!meshServiceManager.isConnected()) {
+            Log.d(TAG, "Service not connected");
+            return;
+        }
+        
+        // Check if file transfer or chunking in progress
+        if (prefs.getBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false)) {
+            Log.d(TAG, "File transfer in progress");
+            return;
+        }
+        if (prefs.getBoolean(Constants.PREF_PLUGIN_CHUNKING, false)) {
+            Log.d(TAG, "Chunking in progress");
+            return;
+        }
+        
+        int hopLimit = MeshtasticReceiver.getHopLimit();
+        int channel = MeshtasticReceiver.getChannelIndex();
+        
+        Log.d(TAG, cotEvent.toString());
+        if (cotDetail != null) {
+            Log.d(TAG, cotDetail.toString());
+        }
+        
+        // Parse the CoT event
+        CotEventProcessor.ParsedCotData parsedData = cotEventProcessor.parseCotEvent(cotEvent);
+        
+        // Handle different event types
+        String uid = cotEvent.getUID();
+        String type = cotEvent.getType();
+        
+        if (uid.equals(MapView.getMapView().getSelfMarker().getUID())) {
+            // Self PLI report
+            handleSelfPLI(parsedData, hopLimit, channel);
+        } else if (type.equalsIgnoreCase("b-t-f") && uid.contains("All Chat Rooms")) {
+            // All Chat Rooms message
+            handleAllChatMessage(parsedData, hopLimit, channel);
+        } else if (type.equalsIgnoreCase("b-t-f")) {
+            // Direct message chat
+            handleDirectMessage(parsedData, hopLimit, channel);
+        } else {
+            // Other CoT events
+            if (prefs.getBoolean(Constants.PREF_PLUGIN_PLICHAT_ONLY, false)) {
+                Log.d(TAG, "PLI/Chat Only mode - ignoring other events");
+                return;
+            }
+            handleGenericCotEvent(cotEvent, hopLimit, channel);
+        }
+    }
+    
+    private void handleSelfPLI(CotEventProcessor.ParsedCotData data, int hopLimit, int channel) {
+        Log.d(TAG, "Sending self marker PLI to Meshtastic");
+        
+        ATAKProtos.TAKPacket takPacket = cotEventProcessor.buildPLIPacket(data);
+        
+        Log.d(TAG, "Total wire size for TAKPacket: " + takPacket.toByteArray().length);
+        Log.d(TAG, "Sending: " + takPacket.toString());
+        
+        DataPacket dp = new DataPacket(
+            DataPacket.ID_BROADCAST,
+            takPacket.toByteArray(),
+            Portnums.PortNum.ATAK_PLUGIN_VALUE,
+            DataPacket.ID_LOCAL,
+            System.currentTimeMillis(),
+            0,
+            MessageStatus.UNKNOWN,
+            hopLimit,
+            channel,
+            true
+        );
+        
+        meshServiceManager.sendToMesh(dp);
+    }
+    
+    private void handleAllChatMessage(CotEventProcessor.ParsedCotData data, int hopLimit, int channel) {
+        Log.d(TAG, "Sending All Chat Rooms to Meshtastic");
+        
+        ATAKProtos.TAKPacket takPacket = cotEventProcessor.buildChatPacket(data);
+        
+        Log.d(TAG, "Total wire size for TAKPacket: " + takPacket.toByteArray().length);
+        Log.d(TAG, "Sending: " + takPacket.toString());
+        
+        DataPacket dp = new DataPacket(
+            DataPacket.ID_BROADCAST,
+            takPacket.toByteArray(),
+            Portnums.PortNum.ATAK_PLUGIN_VALUE,
+            DataPacket.ID_LOCAL,
+            System.currentTimeMillis(),
+            0,
+            MessageStatus.UNKNOWN,
+            hopLimit,
+            channel,
+            true
+        );
+        
+        meshServiceManager.sendToMesh(dp);
+    }
+    
+    private void handleDirectMessage(CotEventProcessor.ParsedCotData data, int hopLimit, int channel) {
+        Log.d(TAG, "Sending DM Chat to Meshtastic");
+        
+        if (data.to == null) {
+            return;
+        }
+        
+        DataPacket dp;
+        if (data.to.startsWith("!")) {
+            // Meshtastic ID - send as text message
+            Log.d(TAG, "Sending to Meshtastic ID: " + data.to);
+            dp = new DataPacket(
+                data.to,
+                MeshProtos.Data.newBuilder()
+                    .setPayload(ByteString.copyFrom(data.message.getBytes(StandardCharsets.UTF_8)))
+                    .build()
+                    .toByteArray(),
+                Portnums.PortNum.TEXT_MESSAGE_APP_VALUE,
+                DataPacket.ID_LOCAL,
+                System.currentTimeMillis(),
+                0,
+                MessageStatus.UNKNOWN,
+                hopLimit,
+                channel,
+                true
+            );
+        } else {
+            // Regular ATAK device
+            ATAKProtos.TAKPacket takPacket = cotEventProcessor.buildChatPacket(data);
+            
+            Log.d(TAG, "Total wire size for TAKPacket: " + takPacket.toByteArray().length);
+            Log.d(TAG, "Sending: " + takPacket.toString());
+            
+            dp = new DataPacket(
+                DataPacket.ID_BROADCAST,
+                takPacket.toByteArray(),
+                Portnums.PortNum.ATAK_PLUGIN_VALUE,
+                DataPacket.ID_LOCAL,
+                System.currentTimeMillis(),
+                0,
+                MessageStatus.UNKNOWN,
+                hopLimit,
+                channel,
+                true
+            );
+        }
+        
+        meshServiceManager.sendToMesh(dp);
+    }
+    
+    private void handleGenericCotEvent(CotEvent cotEvent, int hopLimit, int channel) {
+        if (prefs.getBoolean(Constants.PREF_PLUGIN_CHUNKING, false)) {
+            Log.d(TAG, "Chunking already in progress");
+            return;
+        }
+        
+        new Thread(() -> {
+            Log.d(TAG, "Sending Chunks");
+            
+            byte[] cotAsBytes;
+            try {
+                // Compress CoT to EXI format
+                EXIFactory exiFactory = DefaultEXIFactory.newInstance();
+                ByteArrayOutputStream osEXI = new ByteArrayOutputStream();
+                EXIResult exiResult = new EXIResult(exiFactory);
+                exiResult.setOutputStream(osEXI);
+                
+                SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
+                SAXParser newSAXParser = saxParserFactory.newSAXParser();
+                XMLReader xmlReader = newSAXParser.getXMLReader();
+                xmlReader.setContentHandler(exiResult.getHandler());
+                
+                InputSource stream = new InputSource(new StringReader(cotEvent.toString()));
+                xmlReader.parse(stream);
+                cotAsBytes = osEXI.toByteArray();
+                osEXI.close();
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to compress CoT event", e);
+                return;
+            }
+            
+            Log.d(TAG, "Size: " + cotAsBytes.length);
+            
+            // Small messages can be sent directly
+            if (cotAsBytes.length < 236) {
+                Log.d(TAG, "Small send");
+                DataPacket dp = new DataPacket(
+                    DataPacket.ID_BROADCAST,
+                    cotAsBytes,
+                    Portnums.PortNum.ATAK_FORWARDER_VALUE,
+                    DataPacket.ID_LOCAL,
+                    System.currentTimeMillis(),
+                    0,
+                    MessageStatus.UNKNOWN,
+                    hopLimit,
+                    channel,
+                    true
+                );
+                meshServiceManager.sendToMesh(dp);
+                return;
+            }
+            
+            // Large messages need chunking
+            editor.putBoolean(Constants.PREF_PLUGIN_CHUNKING, true);
+            editor.apply();
+            
+            try {
+                boolean success = chunkManager.sendChunkedData(
+                    cotAsBytes,
+                    meshServiceManager.getService(),
+                    prefs,
+                    hopLimit,
+                    channel
+                );
+                
+                if (!success) {
+                    Log.e(TAG, "Failed to send chunked data");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Chunking failed", e);
+            } finally {
+                editor.putBoolean(Constants.PREF_PLUGIN_CHUNKING, false);
+                editor.apply();
+            }
+        }).start();
+    }
+    
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
         if (key == null) return;
-        if (FileSystemUtils.isEquals(key, "plugin_meshtastic_rate_value")) {
-            String rate = prefs.getString("plugin_meshtastic_rate_value", "0");
+        
+        if (FileSystemUtils.isEquals(key, Constants.PREF_PLUGIN_RATE_VALUE)) {
+            String rate = prefs.getString(Constants.PREF_PLUGIN_RATE_VALUE, "0");
             Log.d(TAG, "Rate: " + rate);
             editor.putString("locationReportingStrategy", "Constant");
             editor.putString("constantReportingRateUnreliable", rate);
             editor.putString("constantReportingRateReliable", rate);
             editor.apply();
         }
-
-        if ("plugin_meshtastic_external_gps".equals(key)) {
-            boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+        
+        if (Constants.PREF_PLUGIN_EXTERNAL_GPS.equals(key)) {
+            boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean(Constants.PREF_PLUGIN_EXTERNAL_GPS, false);
             if (shouldUseMeshtasticExternalGPS) {
-                int gpsPort = prefs.getInt("listenPort", 4349);
+                int gpsPort = prefs.getInt(Constants.PREF_LISTEN_PORT, Constants.DEFAULT_GPS_PORT);
                 meshtasticExternalGPS.start(gpsPort);
             } else {
                 meshtasticExternalGPS.stop();
             }
         }
+    }
+    
+    @NonNull
+    private static IntentFilter getIntentFilter() {
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(Constants.ACTION_RECEIVED_ATAK_FORWARDER);
+        intentFilter.addAction("com.geeksville.mesh.RECEIVED.257");
+        intentFilter.addAction(Constants.ACTION_RECEIVED_ATAK_PLUGIN);
+        intentFilter.addAction("com.geeksville.mesh.RECEIVED.72");
+        intentFilter.addAction(Constants.ACTION_NODE_CHANGE);
+        intentFilter.addAction(Constants.ACTION_MESH_CONNECTED);
+        intentFilter.addAction(Constants.ACTION_MESH_DISCONNECTED);
+        intentFilter.addAction(Constants.ACTION_RECEIVED_NODEINFO_APP);
+        intentFilter.addAction(Constants.ACTION_RECEIVED_POSITION_APP);
+        intentFilter.addAction(Constants.ACTION_MESSAGE_STATUS);
+        intentFilter.addAction(Constants.ACTION_TEXT_MESSAGE_APP);
+        return intentFilter;
+    }
+    
+    // Static helper methods for backward compatibility
+    public static void sendToMesh(DataPacket dp) {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        manager.sendToMesh(dp);
+    }
+    
+    public static boolean sendFile(File f) {
+        try {
+            byte[] fileBytes = FileSystemUtils.read(f);
+            ChunkManager chunkManager = new ChunkManager();
+            MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MapView.getMapView().getContext());
+            
+            NotificationHelper notificationHelper = NotificationHelper.getInstance(MapView.getMapView().getContext());
+            
+            boolean success = chunkManager.sendChunkedData(
+                fileBytes,
+                manager.getService(),
+                prefs,
+                MeshtasticReceiver.getHopLimit(),
+                MeshtasticReceiver.getChannelIndex()
+            );
+            
+            if (success) {
+                notificationHelper.showCompletionNotification();
+            }
+            
+            return success;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to send file", e);
+            return false;
+        }
+    }
+    
+    public static void setOwner(MeshUser meshUser) {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        manager.setOwner(meshUser);
+    }
+    
+    public static void setChannel(byte[] channel) {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        manager.setChannel(channel);
+    }
+    
+    public static void setConfig(byte[] config) {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        manager.setConfig(config);
+    }
+    
+    public static byte[] getChannelSet() {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        return manager.getChannelSet();
+    }
+    
+    public static byte[] getConfig() {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        return manager.getConfig();
+    }
+    
+    public static List<NodeInfo> getNodes() {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        return manager.getNodes();
+    }
+    
+    public static MyNodeInfo getMyNodeInfo() {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        return manager.getMyNodeInfo();
+    }
+    
+    public static String getMyNodeID() {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        return manager.getMyNodeID();
+    }
+    
+    public static boolean reconnect() {
+        MeshServiceManager manager = MeshServiceManager.getInstance(MapView.getMapView().getContext());
+        return manager.reconnect();
+    }
+    
+    public static MeshServiceManager getMeshService() {
+        return MeshServiceManager.getInstance(MapView.getMapView().getContext());
+    }
+    
+    // Re-export ServiceConnectionState for compatibility
+    public static class ServiceConnectionState {
+        public static final MeshServiceManager.ServiceConnectionState CONNECTED = MeshServiceManager.ServiceConnectionState.CONNECTED;
+        public static final MeshServiceManager.ServiceConnectionState DISCONNECTED = MeshServiceManager.ServiceConnectionState.DISCONNECTED;
     }
 }

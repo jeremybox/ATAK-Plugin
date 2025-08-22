@@ -47,7 +47,7 @@ enum class MessageStatus : Parcelable {
 /**
  * A parcelable version of the protobuf MeshPacket + Data subpacket.
  */
-@Serializable
+// @Serializable
 data class DataPacket(
     var to: String? = ID_BROADCAST, // a nodeID string, or ID_BROADCAST for broadcast
     val bytes: ByteArray?,

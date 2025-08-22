@@ -16,6 +16,8 @@ import android.content.Intent;
 
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+
+import com.atakmap.android.meshtastic.util.Constants;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -156,22 +158,18 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         if (action == null) return;
         Log.d(TAG, "ACTION: " + action);
         switch (action) {
-            case MeshtasticMapComponent.ACTION_MESH_CONNECTED: {
-                String extraConnected = intent.getStringExtra(MeshtasticMapComponent.EXTRA_CONNECTED);
-                boolean connected = extraConnected.equals(MeshtasticMapComponent.STATE_CONNECTED);
+            case Constants.ACTION_MESH_CONNECTED: {
+                String extraConnected = intent.getStringExtra(Constants.EXTRA_CONNECTED);
+                boolean connected = extraConnected.equals(Constants.STATE_CONNECTED);
                 Log.d(TAG, "Received ACTION_MESH_CONNECTED: " + extraConnected);
                 if (connected) {
-                    try {
-                        SharedPreferences.Editor editor = prefs.edit();
-                        editor.putBoolean("plugin_meshtastic_shortfast", false);
-                        editor.apply();
-                        boolean ret = MeshtasticMapComponent.reconnect();
-                        if (ret) {
-                            MeshtasticMapComponent.mConnectionState = MeshtasticMapComponent.ServiceConnectionState.CONNECTED;
-                            MeshtasticMapComponent.mw.setIcon("green");
-                        }
-                    } catch (RemoteException e) {
-                        e.printStackTrace();
+                    SharedPreferences.Editor editor = prefs.edit();
+                    editor.putBoolean("plugin_meshtastic_shortfast", false);
+                    editor.apply();
+                    boolean ret = MeshtasticMapComponent.reconnect();
+                    if (ret) {
+                        MeshtasticMapComponent.mConnectionState = MeshtasticMapComponent.ServiceConnectionState.CONNECTED;
+                        MeshtasticMapComponent.mw.setIcon("green");
                     }
                 } else {
                     MeshtasticMapComponent.mConnectionState = MeshtasticMapComponent.ServiceConnectionState.DISCONNECTED;
@@ -179,13 +177,13 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 }
                 break;
             }
-            case MeshtasticMapComponent.ACTION_MESH_DISCONNECTED: {
-                String extraConnected = intent.getStringExtra(MeshtasticMapComponent.EXTRA_DISCONNECTED);
+            case Constants.ACTION_MESH_DISCONNECTED: {
+                String extraConnected = intent.getStringExtra(Constants.EXTRA_DISCONNECTED);
                 if (extraConnected == null) {
                     Log.d(TAG, "Received ACTION_MESH_DISCONNECTED: null");
                     return;
                 }
-                boolean connected = extraConnected.equals(MeshtasticMapComponent.STATE_DISCONNECTED);
+                boolean connected = extraConnected.equals(Constants.STATE_DISCONNECTED);
                 Log.d(TAG, "Received ACTION_MESH_DISCONNECTED: " + extraConnected);
                 if (connected) {
                     MeshtasticMapComponent.mConnectionState = MeshtasticMapComponent.ServiceConnectionState.DISCONNECTED;
@@ -193,9 +191,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 }
                 break;
             }
-            case MeshtasticMapComponent.ACTION_MESSAGE_STATUS:
-                int id = intent.getIntExtra(MeshtasticMapComponent.EXTRA_PACKET_ID, 0);
-                MessageStatus status = intent.getParcelableExtra(MeshtasticMapComponent.EXTRA_STATUS);
+            case Constants.ACTION_MESSAGE_STATUS:
+                int id = intent.getIntExtra(Constants.EXTRA_PACKET_ID, 0);
+                MessageStatus status = intent.getParcelableExtra(Constants.EXTRA_STATUS);
                 Log.d(TAG, "Message Status ID: " + id + " Status: " + status);
                 if (prefs.getInt("plugin_meshtastic_switch_id", 0) == id && status == MessageStatus.DELIVERED) {
                     editor.putBoolean("plugin_meshtastic_switch_ACK", false);
@@ -214,8 +212,8 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     Log.d(TAG, "Got ERROR from Chunk");
                 }
                 break;
-            case MeshtasticMapComponent.ACTION_RECEIVED_ATAK_FORWARDER:
-            case MeshtasticMapComponent.ACTION_RECEIVED_ATAK_PLUGIN: {
+            case Constants.ACTION_RECEIVED_ATAK_FORWARDER:
+            case Constants.ACTION_RECEIVED_ATAK_PLUGIN: {
                 Thread thread = new Thread(() -> {
                     try {
                         receive(intent);
@@ -228,10 +226,10 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 thread.start();
                 break;
             }
-            case MeshtasticMapComponent.ACTION_ALERT_APP:
-            case MeshtasticMapComponent.ACTION_TEXT_MESSAGE_APP:
+            case Constants.ACTION_ALERT_APP:
+            case Constants.ACTION_TEXT_MESSAGE_APP:
                 Log.d(TAG, "Got a meshtastic text message");
-                DataPacket payload = intent.getParcelableExtra(MeshtasticMapComponent.EXTRA_PAYLOAD);
+                DataPacket payload = intent.getParcelableExtra(Constants.EXTRA_PAYLOAD);
                 if (payload == null) return;
                 String message = new String(payload.getBytes());
                 Log.d(TAG, "Message: " + message);
@@ -361,7 +359,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                         Log.e(TAG, "cotEvent was not valid");
                 }
                 break;
-            case MeshtasticMapComponent.ACTION_NODE_CHANGE:
+            case Constants.ACTION_NODE_CHANGE:
                 NodeInfo ni = null;
                 try {
                     ni = intent.getParcelableExtra("com.geeksville.mesh.NodeInfo");
@@ -630,7 +628,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
     }
 
     protected void receive(Intent intent) {
-        DataPacket payload = intent.getParcelableExtra(MeshtasticMapComponent.EXTRA_PAYLOAD);
+        DataPacket payload = intent.getParcelableExtra(Constants.EXTRA_PAYLOAD);
         if (payload == null) return;
         int dataType = payload.getDataType();
         Log.v(TAG, "handleReceive(), dataType: " + dataType + " size: " + payload.getBytes().length);
@@ -1306,12 +1304,8 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     Log.d(TAG, "Sending: " + tak_packet.build().toString());
 
                     dp = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
-                    try {
-                        if (MeshtasticMapComponent.getMeshService() != null)
-                            MeshtasticMapComponent.getMeshService().send(dp);
-                    } catch (RemoteException e) {
-                        throw new RuntimeException(e);
-                    }
+                    if (MeshtasticMapComponent.getMeshService() != null)
+                        MeshtasticMapComponent.getMeshService().sendToMesh(dp);
                 } else if (cotDetail.getAttribute("contact") != null) {
                     for (Contact c : Contacts.getInstance().getAllContacts()) {
                         if (cotEvent.getUID().equals(c.getUid())) {
@@ -1396,12 +1390,8 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                             Log.d(TAG, "Sending: " + tak_packet.build().toString());
 
                             dp = new DataPacket(DataPacket.ID_BROADCAST, tak_packet.build().toByteArray(), Portnums.PortNum.ATAK_PLUGIN_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
-                            try {
-                                if (MeshtasticMapComponent.getMeshService() != null)
-                                    MeshtasticMapComponent.getMeshService().send(dp);
-                            } catch (RemoteException e) {
-                                throw new RuntimeException(e);
-                            }
+                            if (MeshtasticMapComponent.getMeshService() != null)
+                                MeshtasticMapComponent.getMeshService().sendToMesh(dp);
                         }
                     }
                 }

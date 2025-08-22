@@ -86,7 +86,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'com.google.protobuf'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-parcelize'
-apply plugin: 'kotlinx-serialization'
+// apply plugin: 'kotlinx-serialization'
 apply plugin: 'atak-takdev-plugin'
 
 android {
@@ -256,7 +256,9 @@ dependencies {
     implementation 'com.siemens.ct.exi:exificient:1.0.7'
 
 
-    implementation "org.jetbrains.kotlinx:kotlinx-serialization-runtime:1.0-M1-1.4.0-rc"
+	implementation "org.jetbrains.kotlinx:kotlinx-serialization-core:1.9.0"
+	implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0"
+
     implementation 'com.google.protobuf:protobuf-kotlin:3.21.12'
     implementation 'com.google.ar:core:1.43.0'
 
