@@ -17,27 +17,21 @@
         <item>1800</item>
     </string-array>
     <string-array name="codec2_modes">
-        <item>3200 bps</item>
-        <item>2400 bps</item>
-        <item>1600 bps</item>
-        <item>1400 bps</item>
-        <item>1300 bps</item>
-        <item>1200 bps</item>
-        <item>700 bps</item>
+        <item>700C bps (Recommended)</item>
         <item>700B bps</item>
-        <item>700C bps (Default)</item>
-        <item>WB (Wideband)</item>
+        <item>700 bps</item>
+        <item>1200 bps</item>
+        <item>1300 bps</item>
+        <item>1400 bps</item>
+        <item>1600 bps</item>
     </string-array>
     <string-array name="codec2_mode_values">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-        <item>3</item>
-        <item>4</item>
-        <item>5</item>
-        <item>6</item>
-        <item>7</item>
         <item>8</item>
-        <item>9</item>
+        <item>7</item>
+        <item>6</item>
+        <item>5</item>
+        <item>4</item>
+        <item>3</item>
+        <item>2</item>
     </string-array>
 </resources>

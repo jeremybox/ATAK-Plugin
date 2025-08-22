@@ -220,12 +220,16 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
         };
         mapView.addOnKeyListener(keyListener);
 
-        // Codec2 Recorder/Playback - get mode from preferences
-        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
-        c2 = Codec2.create(codec2Mode);
+        // Codec2 Recorder/Playback - hardcoded to 700C for compatibility
+        // NOTE: All devices must use the same codec mode for audio to work properly
+        c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        if (c2 == 0) {
+            Log.e(TAG, "Failed to create Codec2 with mode 700C");
+        }
         c2FrameSize = Codec2.getBitsSize(c2);
         samplesBufSize = Codec2.getSamplesPerFrame(c2);
         recorderBuf = new short[samplesBufSize];
+        Log.d(TAG, "Codec2 initialized with mode 700C, frame size: " + c2FrameSize + ", samples: " + samplesBufSize);
     }
 
     private final Queue<byte[]> recordingQueue = new ConcurrentLinkedQueue<>();
@@ -657,13 +661,15 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
             }
         }
         
-        // Create new codec with current preference
-        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
-        c2 = Codec2.create(codec2Mode);
+        // Create new codec - hardcoded to 700C for compatibility
+        c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        if (c2 == 0) {
+            Log.e(TAG, "Failed to create Codec2 with mode 700C");
+        }
         c2FrameSize = Codec2.getBitsSize(c2);
         samplesBufSize = Codec2.getSamplesPerFrame(c2);
         recorderBuf = new short[samplesBufSize];
-        Log.d(TAG, "Codec2 reinitialized with mode: " + codec2Mode);
+        Log.d(TAG, "Codec2 reinitialized with mode 700C, frame size: " + c2FrameSize + ", samples: " + samplesBufSize);
     }
     
     @Override

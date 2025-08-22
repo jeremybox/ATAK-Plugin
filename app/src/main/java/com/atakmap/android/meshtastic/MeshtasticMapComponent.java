@@ -461,15 +461,6 @@ public class MeshtasticMapComponent extends DropDownMapComponent
             editor.putString("constantReportingRateUnreliable", rate);
             editor.putString("constantReportingRateReliable", rate);
             editor.apply();
-        } else if (FileSystemUtils.isEquals(key, "plugin_meshtastic_codec2_mode")) {
-            // Reinitialize codec when mode changes
-            Log.d(TAG, "Codec2 mode changed, reinitializing codec");
-            if (mr != null) {
-                mr.reinitializeCodec();
-            }
-            if (ddr != null) {
-                ddr.reinitializeCodec();
-            }
         }
         
         if (Constants.PREF_PLUGIN_EXTERNAL_GPS.equals(key)) {

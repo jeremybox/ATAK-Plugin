@@ -148,10 +148,14 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 .setOngoing(false)
                 .setContentIntent(appIntent);
 
-        // codec2 recorder/playback - get mode from preferences
-        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
-        this.c2 = Codec2.create(codec2Mode);
+        // codec2 recorder/playback - hardcoded to 700C for compatibility
+        // NOTE: All devices must use the same codec mode for audio to work properly
+        this.c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        if (c2 == 0) {
+            Log.e(TAG, "Failed to create Codec2 with mode 700C");
+        }
         this.samplesBufSize = Codec2.getSamplesPerFrame(c2);
+        Log.d(TAG, "Codec2 initialized with mode 700C, samples per frame: " + samplesBufSize);
     }
 
     @Override
@@ -552,12 +556,12 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
         return result;
     }
 
-    public static List<byte[]> extractChunks(byte[] byteArray) {
-        int chunkSize = 4;
+    public static List<byte[]> extractChunks(byte[] byteArray, int chunkSize) {
         List<byte[]> chunks = new ArrayList<>();
 
         for (int i = 0; i < byteArray.length; i += chunkSize) {
-            byte[] chunk = Arrays.copyOfRange(byteArray, i, i + chunkSize);
+            int endIndex = Math.min(i + chunkSize, byteArray.length);
+            byte[] chunk = Arrays.copyOfRange(byteArray, i, endIndex);
             chunks.add(chunk);
         }
 
@@ -667,14 +671,20 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
             if (audioPermissionGranted  && (raw[0] & 0xFF) == 0xC2) {
                 Log.d(TAG, "Received codec2 frame");
 
-                // skip 0xC2 from data and split into frames of size c2FrameSize, and decode/play
-                List<byte[]> frames = extractChunks(slice(raw, 1, raw.length));
-                Log.d(TAG, "Frames: " + frames.size());
+                // skip 0xC2 from data and split into frames
+                // 700C mode uses 8 bytes per frame
+                int frameSize = Codec2.getBitsSize(c2);
+                List<byte[]> frames = extractChunks(slice(raw, 1, raw.length), frameSize);
+                Log.d(TAG, "Frames: " + frames.size() + ", frame size: " + frameSize);
 
                 for (byte[] frame : frames) {
-                    playbackBuf = new short[samplesBufSize];
-                    Codec2.decode(c2, playbackBuf, frame);
-                    playAudio(playbackBuf);
+                    if (frame.length == frameSize) {
+                        playbackBuf = new short[samplesBufSize];
+                        Codec2.decode(c2, playbackBuf, frame);
+                        playAudio(playbackBuf);
+                    } else {
+                        Log.w(TAG, "Skipping incomplete frame of size " + frame.length);
+                    }
                 }
 
                 return;
@@ -1446,11 +1456,13 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
             }
         }
         
-        // Create new codec with current preference
-        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
-        this.c2 = Codec2.create(codec2Mode);
+        // Create new codec - hardcoded to 700C for compatibility
+        this.c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        if (c2 == 0) {
+            Log.e(TAG, "Failed to create Codec2 with mode 700C");
+        }
         this.samplesBufSize = Codec2.getSamplesPerFrame(c2);
-        Log.d(TAG, "Codec2 reinitialized with mode: " + codec2Mode);
+        Log.d(TAG, "Codec2 reinitialized with mode 700C, samples per frame: " + samplesBufSize);
     }
     
     /**

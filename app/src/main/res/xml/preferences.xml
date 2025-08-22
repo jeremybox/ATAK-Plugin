@@ -65,14 +65,6 @@
         android:summary="If enabled, TTS will be used on Meshtastic text messages"
         android:dialogTitle="Use Text to Speech for incoming messages"
         android:defaultValue="false"/>
-    <com.atakmap.android.gui.PanListPreference
-        android:key="plugin_meshtastic_codec2_mode"
-        android:title="Codec2 Voice Mode"
-        android:summary="Select voice codec quality (lower bps = lower quality but better range)"
-        android:dialogTitle="Codec2 Voice Mode"
-        android:entries="@array/codec2_modes"
-        android:entryValues="@array/codec2_mode_values"
-        android:defaultValue="8"/>
     <com.atakmap.android.gui.PanEditTextPreference
         android:key="plugin_meshtastic_ptt"
         android:title="PTT KeyCode"
