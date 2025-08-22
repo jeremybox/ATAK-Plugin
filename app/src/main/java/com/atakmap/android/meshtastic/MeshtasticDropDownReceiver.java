@@ -239,13 +239,29 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
         }
 
         isRecordingActive = true; // Prevent multiple recordings
+        
+        // Clear any leftover chunks from previous recording
+        synchronized (recordingQueue) {
+            if (!recordingQueue.isEmpty()) {
+                Log.w(TAG, "Clearing " + recordingQueue.size() + " leftover chunks from previous recording");
+                recordingQueue.clear();
+            }
+        }
 
         new Thread(() -> {
             try {
                 startRecording();
                 processAudio(isBroadcast);
+            } catch (Exception e) {
+                Log.e(TAG, "Error during recording", e);
             } finally {
+                // Ensure any remaining audio is sent
+                if (!recordingQueue.isEmpty()) {
+                    Log.d(TAG, "Sending remaining audio in finally block");
+                    sendAudio(isBroadcast);
+                }
                 isRecordingActive = false;
+                stopRecording(); // Ensure recorder is always cleaned up
             }
         }).start();
     }
@@ -292,6 +308,13 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
     private void processAudio(boolean isBroadcast) {
         byte[] frame;
         char[] encodedBuf = new char[c2FrameSize];
+        
+        // Configurable thresholds for better performance
+        final int MIN_CHUNK_THRESHOLD = 4; // Minimum chunks before sending (reduces overhead)
+        final int MAX_CHUNK_THRESHOLD = 12; // Maximum chunks to prevent large packets
+        final long MAX_WAIT_TIME_MS = 500; // Max time to wait before sending (500ms)
+        
+        long lastSendTime = System.currentTimeMillis();
 
         while (isRecording.get()) {
             int readBytes = recorder.read(recorderBuf, 0, recorderBuf.length);
@@ -306,21 +329,63 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
                 }
             }
 
-            if (recordingQueue.size() > 8) {
+            // Intelligent sending logic:
+            // 1. Send immediately if we hit max threshold (prevent packet too large)
+            // 2. Send if we have min threshold AND enough time has passed
+            // 3. Send if max wait time exceeded (prevent audio delay)
+            long currentTime = System.currentTimeMillis();
+            long timeSinceLastSend = currentTime - lastSendTime;
+            int queueSize = recordingQueue.size();
+            
+            boolean shouldSend = false;
+            
+            if (queueSize >= MAX_CHUNK_THRESHOLD) {
+                // Prevent packets from getting too large
+                shouldSend = true;
+                Log.d(TAG, "Sending audio: max threshold reached (" + queueSize + " chunks)");
+            } else if (queueSize >= MIN_CHUNK_THRESHOLD && timeSinceLastSend >= MAX_WAIT_TIME_MS) {
+                // Balance between latency and efficiency
+                shouldSend = true;
+                Log.d(TAG, "Sending audio: min threshold with timeout (" + queueSize + " chunks, " + timeSinceLastSend + "ms)");
+            }
+            
+            if (shouldSend) {
                 sendAudio(isBroadcast);
+                lastSendTime = currentTime;
             }
         }
 
-        sendAudio(isBroadcast); // Flush remaining audio
+        // CRITICAL: Always flush remaining audio when recording stops
+        // This ensures no audio chunks are lost, regardless of threshold
+        if (!recordingQueue.isEmpty()) {
+            Log.d(TAG, "Recording stopped - flushing remaining " + recordingQueue.size() + " audio chunks");
+            sendAudio(isBroadcast);
+        }
+        
         stopRecording();
     }
 
     private void sendAudio(boolean isBroadcast) {
         byte[] audio;
         synchronized (recordingQueue) {
-            if (recordingQueue.isEmpty()) return;
+            if (recordingQueue.isEmpty()) {
+                Log.d(TAG, "No audio chunks to send");
+                return;
+            }
 
-            int totalSize = recordingQueue.stream().mapToInt(b -> b.length).sum();
+            // Calculate total size safely
+            int totalSize = 0;
+            for (byte[] chunk : recordingQueue) {
+                totalSize += chunk.length;
+            }
+            
+            // Validate size before allocation
+            if (totalSize <= 0 || totalSize > 1024 * 1024) { // Max 1MB for safety
+                Log.e(TAG, "Invalid audio size: " + totalSize);
+                recordingQueue.clear();
+                return;
+            }
+
             audio = new byte[totalSize];
             int offset = 0;
 
@@ -332,32 +397,52 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
             recordingQueue.clear();
         }
 
-        Log.d(TAG, "Broadcasting audio: " + audio.length + " bytes");
+        Log.d(TAG, "Sending audio packet: " + audio.length + " bytes");
 
         if (isBroadcast) {
-            DataPacket dp = new DataPacket(
-                    DataPacket.ID_BROADCAST,
-                    append(new byte[]{(byte) 0xC2}, audio),
-                    Portnums.PortNum.ATAK_FORWARDER_VALUE,
-                    DataPacket.ID_LOCAL,
-                    System.currentTimeMillis(),
-                    0,
-                    MessageStatus.UNKNOWN,
-                    0, // no hops for audio
-                    MeshtasticReceiver.getChannelIndex(),
-                    false
-            );
-            MeshtasticMapComponent.sendToMesh(dp);
+            try {
+                // Add codec2 header (0xC2) to indicate this is codec2 audio
+                byte[] packetData = append(new byte[]{(byte) 0xC2}, audio);
+                
+                DataPacket dp = new DataPacket(
+                        DataPacket.ID_BROADCAST,
+                        packetData,
+                        Portnums.PortNum.ATAK_FORWARDER_VALUE,
+                        DataPacket.ID_LOCAL,
+                        System.currentTimeMillis(),
+                        0,
+                        MessageStatus.UNKNOWN,
+                        0, // no hops for audio to reduce latency
+                        MeshtasticReceiver.getChannelIndex(),
+                        false
+                );
+                
+                MeshtasticMapComponent.sendToMesh(dp);
+                Log.d(TAG, "Audio packet sent successfully");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to send audio packet", e);
+            }
         }
     }
 
     private void stopRecording() {
         if (recorder != null) {
-            recorder.stop();
-            recorder.release();
-            recorder = null;
+            try {
+                if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    recorder.stop();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error stopping recorder", e);
+            } finally {
+                try {
+                    recorder.release();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error releasing recorder", e);
+                }
+                recorder = null;
+            }
         }
-        Log.d(TAG, "Recording stopped");
+        Log.d(TAG, "Recording stopped and resources released");
     }
 
     // convert char array to byte array
@@ -558,7 +643,19 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
     @Override
     protected void disposeImpl() {
         mapView.removeOnKeyListener(keyListener);
-
+        
+        // Clean up Codec2 resources
+        if (c2 != 0) {
+            try {
+                Codec2.destroy(c2);
+                c2 = 0;
+            } catch (Exception e) {
+                Log.e(TAG, "Error destroying Codec2 instance", e);
+            }
+        }
+        
+        // Clean up audio recorder if it exists
+        stopRecording();
     }
 
     @Override

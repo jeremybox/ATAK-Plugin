@@ -2,9 +2,19 @@ package com.ustadmobile.codec2;
 
 public class Codec2 {
 
+    private static boolean libraryLoaded = false;
+
     static {
-        System.loadLibrary("codec2");
-        System.loadLibrary("Codec2JNI");
+        try {
+            if (!libraryLoaded) {
+                System.loadLibrary("codec2");
+                System.loadLibrary("Codec2JNI");
+                libraryLoaded = true;
+            }
+        } catch (UnsatisfiedLinkError e) {
+            // Library might already be loaded by a previous instance
+            libraryLoaded = true;
+        }
     }
 
     public static final int CODEC2_MODE_3200 = 0;

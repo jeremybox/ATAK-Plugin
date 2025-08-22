@@ -41,12 +41,20 @@ public class CotEventProcessor {
     public ParsedCotData parseCotEvent(CotEvent cotEvent) {
         ParsedCotData data = new ParsedCotData();
         
+        if (cotEvent == null) {
+            Log.w(TAG, "Null CoT event provided");
+            return data;
+        }
+        
         // Get location from self marker
         MapView mapView = MapView.getMapView();
         if (mapView != null && mapView.getSelfMarker() != null) {
-            data.altitude = mapView.getSelfMarker().getPoint().getAltitude();
-            data.latitude = mapView.getSelfMarker().getPoint().getLatitude();
-            data.longitude = mapView.getSelfMarker().getPoint().getLongitude();
+            com.atakmap.coremap.maps.coords.GeoPoint point = mapView.getSelfMarker().getPoint();
+            if (point != null) {
+                data.altitude = point.getAltitude();
+                data.latitude = point.getLatitude();
+                data.longitude = point.getLongitude();
+            }
             data.deviceCallsign = mapView.getSelfMarker().getUID();
         }
         

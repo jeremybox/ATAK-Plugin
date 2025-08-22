@@ -51,6 +51,8 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
@@ -80,16 +82,21 @@ public class MeshtasticMapComponent extends DropDownMapComponent
     public static MeshtasticWidget mw;
     
     // Connection state management
-    public static MeshServiceManager.ServiceConnectionState mConnectionState = MeshServiceManager.ServiceConnectionState.DISCONNECTED;
+    public static volatile MeshServiceManager.ServiceConnectionState mConnectionState = MeshServiceManager.ServiceConnectionState.DISCONNECTED;
+    private static final Object CONNECTION_STATE_LOCK = new Object();
     
     // Preferences
     private SharedPreferences prefs;
     private SharedPreferences.Editor editor;
     
+    // Thread pool for background operations
+    private ExecutorService executorService;
+    
     public MeshtasticMapComponent() {
         meshtasticExternalGPS = new MeshtasticExternalGPS(new PositionToNMEAMapper());
         chunkManager = new ChunkManager();
         cotEventProcessor = new CotEventProcessor();
+        executorService = Executors.newCachedThreadPool();
     }
     
     @Override
@@ -186,15 +193,25 @@ public class MeshtasticMapComponent extends DropDownMapComponent
     
     @Override
     protected void onDestroyImpl(Context context, MapView view) {
+        // Clean up MeshtasticReceiver resources
+        if (mr != null) {
+            mr.cleanup();
+        }
+        
         meshServiceManager.disconnect();
         view.getContext().unregisterReceiver(mr);
         if (mw != null) {
             mw.destroy();
         }
         prefs.unregisterOnSharedPreferenceChangeListener(this);
-        ToolsPreferenceFragment.unregister(pluginContext.getString(R.string.preferences_title));
+        ToolsPreferenceFragment.unregister(pluginContext.getString(R.string.meshtastic_preferences));
         URIContentManager.getInstance().unregisterSender(meshtasticSender);
         meshtasticExternalGPS.stop();
+        
+        // Shutdown executor service
+        if (executorService != null) {
+            executorService.shutdown();
+        }
     }
     
     @Override
@@ -362,7 +379,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
             return;
         }
         
-        new Thread(() -> {
+        executorService.execute(() -> {
             Log.d(TAG, "Sending Chunks");
             
             byte[] cotAsBytes;
@@ -430,7 +447,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
                 editor.putBoolean(Constants.PREF_PLUGIN_CHUNKING, false);
                 editor.apply();
             }
-        }).start();
+        });
     }
     
     @Override

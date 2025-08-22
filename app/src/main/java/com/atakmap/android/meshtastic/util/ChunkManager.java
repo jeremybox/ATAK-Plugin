@@ -13,9 +13,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class ChunkManager {
     private static final String TAG = "ChunkManager";
+    private static final int MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB max
+    private static final int MAX_CHUNKS = 1000; // Maximum number of chunks
     private final int chunkSize;
     private final HashMap<Integer, byte[]> receivedChunks;
     private boolean isReceivingChunks;
@@ -70,8 +74,23 @@ public class ChunkManager {
             return false;
         }
         
+        if (data == null || data.length == 0) {
+            Log.e(TAG, "Invalid data to send");
+            return false;
+        }
+        
+        if (data.length > MAX_TOTAL_SIZE) {
+            Log.e(TAG, "Data too large to send: " + data.length + " bytes (max: " + MAX_TOTAL_SIZE + ")");
+            return false;
+        }
+        
         List<byte[]> chunks = divideIntoChunks(data);
         if (chunks.isEmpty()) {
+            return false;
+        }
+        
+        if (chunks.size() > MAX_CHUNKS) {
+            Log.e(TAG, "Too many chunks: " + chunks.size() + " (max: " + MAX_CHUNKS + ")");
             return false;
         }
         
@@ -130,22 +149,31 @@ public class ChunkManager {
             
             meshService.send(dp);
             
-            // Wait for acknowledgment
-            int waitTime = 0;
+            // Wait for acknowledgment with timeout
+            long startTime = System.currentTimeMillis();
+            long timeout = Constants.CHUNK_ACK_TIMEOUT_MS * Constants.CHUNK_MAX_RETRIES;
+            
             while (prefs.getBoolean(Constants.PREF_PLUGIN_CHUNK_ACK, false)) {
-                Thread.sleep(Constants.CHUNK_ACK_TIMEOUT_MS);
-                waitTime += Constants.CHUNK_ACK_TIMEOUT_MS;
-                
-                if (waitTime > Constants.CHUNK_ACK_TIMEOUT_MS * Constants.CHUNK_MAX_RETRIES) {
+                // Check for timeout
+                if (System.currentTimeMillis() - startTime > timeout) {
                     throw new TimeoutException("Chunk acknowledgment timeout");
                 }
                 
+                // Check for error
                 if (prefs.getBoolean(Constants.PREF_PLUGIN_CHUNK_ERR, false)) {
                     Log.d(TAG, "Chunk error received, retrying");
                     editor.putBoolean(Constants.PREF_PLUGIN_CHUNK_ERR, false);
                     editor.apply();
                     retries++;
                     break;
+                }
+                
+                // Small sleep to avoid busy waiting
+                try {
+                    Thread.sleep(50); // Check every 50ms instead of CHUNK_ACK_TIMEOUT_MS
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new InterruptedException("Chunk sending interrupted");
                 }
             }
             
@@ -158,8 +186,20 @@ public class ChunkManager {
     }
     
     public void startReceiving(int totalSize) {
+        if (totalSize <= 0 || totalSize > MAX_TOTAL_SIZE) {
+            Log.e(TAG, "Invalid total size for receiving: " + totalSize);
+            return;
+        }
+        
         isReceivingChunks = true;
         expectedChunkCount = (int) Math.ceil((double) totalSize / chunkSize);
+        
+        if (expectedChunkCount > MAX_CHUNKS) {
+            Log.e(TAG, "Too many expected chunks: " + expectedChunkCount);
+            reset();
+            return;
+        }
+        
         receivedChunkCount = 0;
         receivedChunks.clear();
     }

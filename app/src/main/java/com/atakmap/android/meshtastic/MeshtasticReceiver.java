@@ -108,10 +108,11 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
     private int samplesBufSize = 0;
     private boolean audioPermissionGranted = false;
     // chunking
-    private HashMap<Integer, byte[]> chunkMap = new HashMap<>();
+    private final HashMap<Integer, byte[]> chunkMap = new HashMap<>();
     private boolean chunking = false;
     private int chunkSize = 0;
     private int chunkCount = 0;
+    private static final int MAX_CHUNK_MAP_SIZE = 1000; // Prevent unbounded growth
     // misc
     private long c2 = 0;
     private int oldModemPreset;
@@ -571,7 +572,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
     private synchronized void processQueue() {
         if (isPlaying) return; // Prevent multiple simultaneous playbacks
-        else {
+        
+        AudioTrack audioTrack = null;
+        try {
             int minAudioBufSize = AudioRecord.getMinBufferSize(
                     RECORDER_SAMPLERATE,
                     AudioFormat.CHANNEL_IN_MONO,
@@ -585,7 +588,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
             }
 
             // for voice playback
-            this.track = new AudioTrack.Builder()
+            audioTrack = new AudioTrack.Builder()
                     .setAudioAttributes(new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -599,31 +602,52 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     .setBufferSizeInBytes(minAudioBufSize)
                     .build();
 
-            this.track.setVolume(AudioTrack.getMaxVolume());
-            track.play();
+            audioTrack.setVolume(AudioTrack.getMaxVolume());
+            audioTrack.play();
             isPlaying = true;
-
+            
+            // Store reference for cleanup
+            this.track = audioTrack;
+            
+            final AudioTrack finalTrack = audioTrack;
             new Thread(() -> {
                 try {
                     while (!playbackQueue.isEmpty()) {
                         short[] audioData = playbackQueue.poll();
                         if (audioData == null) continue;
-                        track.write(audioData, 0, audioData.length); // Blocking call
-                    }
-
-                    // Ensure playback is fully stopped
-                    if (track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
-                        Log.d(TAG, "Stopping playback");
-                        track.stop();
-                        track.flush();
-                        track.release();
+                        finalTrack.write(audioData, 0, audioData.length); // Blocking call
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error during playback: " + e.getMessage());
                 } finally {
-                    isPlaying = false;
+                    // Ensure playback is fully stopped and resources are released
+                    try {
+                        if (finalTrack != null) {
+                            if (finalTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                                Log.d(TAG, "Stopping playback");
+                                finalTrack.stop();
+                            }
+                            finalTrack.flush();
+                            finalTrack.release();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error releasing AudioTrack: " + e.getMessage());
+                    } finally {
+                        isPlaying = false;
+                        this.track = null;
+                    }
                 }
             }).start();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to initialize AudioTrack: " + e.getMessage());
+            isPlaying = false;
+            if (audioTrack != null) {
+                try {
+                    audioTrack.release();
+                } catch (Exception releaseError) {
+                    Log.e(TAG, "Error releasing AudioTrack on initialization failure: " + releaseError.getMessage());
+                }
+            }
         }
     }
 
@@ -769,6 +793,15 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     Log.d(TAG, "Chunk already received");
                     return;
                 } else {
+                    // Prevent unbounded growth - clear if too many chunks
+                    if (chunkMap.size() >= MAX_CHUNK_MAP_SIZE) {
+                        Log.w(TAG, "Chunk map exceeded maximum size, clearing");
+                        chunkMap.clear();
+                        chunking = false;
+                        chunkSize = 0;
+                        chunkCount = 0;
+                        return;
+                    }
                     chunkMap.put(Integer.valueOf(chunkCount++), chunk);
                 }
 
@@ -1397,5 +1430,35 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 }
             }
         }
+    }
+    
+    /**
+     * Clean up resources when the receiver is unregistered
+     */
+    public void cleanup() {
+        // Destroy Codec2 instance
+        if (c2 != 0) {
+            try {
+                Codec2.destroy(c2);
+                c2 = 0;
+            } catch (Exception e) {
+                Log.e(TAG, "Error destroying Codec2 instance", e);
+            }
+        }
+        
+        // Stop and release audio track if playing
+        if (track != null) {
+            try {
+                if (track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                    track.stop();
+                }
+                track.release();
+                track = null;
+            } catch (Exception e) {
+                Log.e(TAG, "Error releasing audio track", e);
+            }
+        }
+        
+        isPlaying = false;
     }
 }

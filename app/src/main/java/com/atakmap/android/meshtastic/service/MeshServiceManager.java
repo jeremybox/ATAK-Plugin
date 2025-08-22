@@ -20,13 +20,14 @@ import java.util.List;
 
 public class MeshServiceManager {
     private static final String TAG = "MeshServiceManager";
-    private static MeshServiceManager instance;
+    private static volatile MeshServiceManager instance;
+    private static final Object INSTANCE_LOCK = new Object();
     
     private final Context context;
-    private IMeshService meshService;
+    private volatile IMeshService meshService;
     private ServiceConnection serviceConnection;
     private Intent serviceIntent;
-    private ServiceConnectionState connectionState;
+    private volatile ServiceConnectionState connectionState;
     private ConnectionListener connectionListener;
     
     public enum ServiceConnectionState {
@@ -46,9 +47,13 @@ public class MeshServiceManager {
         createServiceConnection();
     }
     
-    public static synchronized MeshServiceManager getInstance(Context context) {
+    public static MeshServiceManager getInstance(Context context) {
         if (instance == null) {
-            instance = new MeshServiceManager(context);
+            synchronized (INSTANCE_LOCK) {
+                if (instance == null) {
+                    instance = new MeshServiceManager(context);
+                }
+            }
         }
         return instance;
     }
@@ -117,6 +122,11 @@ public class MeshServiceManager {
     }
     
     public void sendToMesh(DataPacket dataPacket) {
+        if (dataPacket == null) {
+            Log.w(TAG, "Cannot send null packet to mesh");
+            return;
+        }
+        
         if (!isConnected()) {
             Log.w(TAG, "Cannot send to mesh - service not connected");
             return;
