@@ -148,8 +148,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 .setOngoing(false)
                 .setContentIntent(appIntent);
 
-        // codec2 recorder/playback
-        this.c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        // codec2 recorder/playback - get mode from preferences
+        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
+        this.c2 = Codec2.create(codec2Mode);
         this.samplesBufSize = Codec2.getSamplesPerFrame(c2);
     }
 
@@ -1430,6 +1431,26 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 }
             }
         }
+    }
+    
+    /**
+     * Reinitialize codec with new settings
+     */
+    public void reinitializeCodec() {
+        // Destroy old codec instance if it exists
+        if (c2 != 0) {
+            try {
+                Codec2.destroy(c2);
+            } catch (Exception e) {
+                Log.e(TAG, "Error destroying old Codec2 instance", e);
+            }
+        }
+        
+        // Create new codec with current preference
+        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
+        this.c2 = Codec2.create(codec2Mode);
+        this.samplesBufSize = Codec2.getSamplesPerFrame(c2);
+        Log.d(TAG, "Codec2 reinitialized with mode: " + codec2Mode);
     }
     
     /**

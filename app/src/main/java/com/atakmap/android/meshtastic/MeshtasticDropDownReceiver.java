@@ -220,8 +220,9 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
         };
         mapView.addOnKeyListener(keyListener);
 
-        // Codec2 Recorder/Playback
-        c2 = Codec2.create(Codec2.CODEC2_MODE_700C);
+        // Codec2 Recorder/Playback - get mode from preferences
+        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
+        c2 = Codec2.create(codec2Mode);
         c2FrameSize = Codec2.getBitsSize(c2);
         samplesBufSize = Codec2.getSamplesPerFrame(c2);
         recorderBuf = new short[samplesBufSize];
@@ -640,6 +641,31 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
     public void onDropDownClose() {
     }
 
+    /**
+     * Reinitialize codec with new settings
+     */
+    public void reinitializeCodec() {
+        // Stop recording if active
+        stopRecording();
+        
+        // Destroy old codec instance if it exists
+        if (c2 != 0) {
+            try {
+                Codec2.destroy(c2);
+            } catch (Exception e) {
+                Log.e(TAG, "Error destroying old Codec2 instance", e);
+            }
+        }
+        
+        // Create new codec with current preference
+        int codec2Mode = Integer.parseInt(prefs.getString("plugin_meshtastic_codec2_mode", "8"));
+        c2 = Codec2.create(codec2Mode);
+        c2FrameSize = Codec2.getBitsSize(c2);
+        samplesBufSize = Codec2.getSamplesPerFrame(c2);
+        recorderBuf = new short[samplesBufSize];
+        Log.d(TAG, "Codec2 reinitialized with mode: " + codec2Mode);
+    }
+    
     @Override
     protected void disposeImpl() {
         mapView.removeOnKeyListener(keyListener);
