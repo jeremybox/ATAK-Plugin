@@ -168,7 +168,7 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
                                     codec2_chunks.clear();
 
                                     // 0xC2 is my codec2 header
-                                    DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, append(new byte[]{(byte) 0xC2}, audio), Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, MeshtasticReceiver.getHopLimit(), MeshtasticReceiver.getChannelIndex(), false);
+                                    DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, append(new byte[]{(byte) 0xC2}, audio), Portnums.PortNum.ATAK_FORWARDER_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, MeshtasticReceiver.getHopLimit(), MeshtasticReceiver.getChannelIndex(), MeshtasticReceiver.getWantsAck());
                                     MeshtasticMapComponent.sendToMesh(dp);
                                 } catch (InterruptedException e) {
                                     e.printStackTrace();
@@ -419,7 +419,7 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
                         MessageStatus.UNKNOWN,
                         0, // no hops for audio to reduce latency
                         MeshtasticReceiver.getChannelIndex(),
-                        false
+                        MeshtasticReceiver.getWantsAck()
                 );
                 
                 MeshtasticMapComponent.sendToMesh(dp);
@@ -727,7 +727,7 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
         hopLimit = MeshtasticReceiver.getHopLimit();
         channel = MeshtasticReceiver.getChannelIndex();
 
-        DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, MeshProtos.Data.newBuilder().setPayload(payload).build().toByteArray(),Portnums.PortNum.TEXT_MESSAGE_APP_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, true);
+        DataPacket dp = new DataPacket(DataPacket.ID_BROADCAST, MeshProtos.Data.newBuilder().setPayload(payload).build().toByteArray(),Portnums.PortNum.TEXT_MESSAGE_APP_VALUE, DataPacket.ID_LOCAL, System.currentTimeMillis(), 0, MessageStatus.UNKNOWN, hopLimit, channel, MeshtasticReceiver.getWantsAck());
         MeshtasticMapComponent.sendToMesh(dp);
     }
 

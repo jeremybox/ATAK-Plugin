@@ -9,8 +9,6 @@ import android.preference.PreferenceManager;
 
 import androidx.annotation.NonNull;
 
-import com.atakmap.android.chat.ChatManagerMapComponent;
-import com.atakmap.android.chat.GeoChatService;
 import com.atakmap.android.data.URIContentManager;
 import com.atakmap.android.dropdown.DropDownMapComponent;
 import com.atakmap.android.ipc.AtakBroadcast;
@@ -46,11 +44,9 @@ import org.xml.sax.XMLReader;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -213,7 +209,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
             executorService.shutdown();
         }
     }
-    
+
     @Override
     public void processCotEvent(CotEvent cotEvent, String[] strings) {
         Log.d(TAG, "processCotEvent");
@@ -293,7 +289,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
             MessageStatus.UNKNOWN,
             hopLimit,
             channel,
-            true
+            MeshtasticReceiver.getWantsAck()
         );
         
         meshServiceManager.sendToMesh(dp);
@@ -317,7 +313,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
             MessageStatus.UNKNOWN,
             hopLimit,
             channel,
-            true
+            MeshtasticReceiver.getWantsAck()
         );
         
         meshServiceManager.sendToMesh(dp);
@@ -347,7 +343,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
                 MessageStatus.UNKNOWN,
                 hopLimit,
                 channel,
-                true
+                MeshtasticReceiver.getWantsAck()
             );
         } else {
             // Regular ATAK device
@@ -366,7 +362,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
                 MessageStatus.UNKNOWN,
                 hopLimit,
                 channel,
-                true
+                MeshtasticReceiver.getWantsAck()
             );
         }
         
@@ -419,7 +415,7 @@ public class MeshtasticMapComponent extends DropDownMapComponent
                     MessageStatus.UNKNOWN,
                     hopLimit,
                     channel,
-                    true
+                    MeshtasticReceiver.getWantsAck()
                 );
                 meshServiceManager.sendToMesh(dp);
                 return;

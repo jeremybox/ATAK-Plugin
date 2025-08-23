@@ -1,6 +1,7 @@
 package com.atakmap.android.meshtastic.util;
 
 import android.content.SharedPreferences;
+import com.atakmap.android.meshtastic.MeshtasticReceiver;
 import com.atakmap.coremap.log.Log;
 import com.geeksville.mesh.DataPacket;
 import com.geeksville.mesh.IMeshService;
@@ -13,13 +14,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 public class ChunkManager {
     private static final String TAG = "ChunkManager";
-    private static final int MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB max
-    private static final int MAX_CHUNKS = 1000; // Maximum number of chunks
+    private static final int MAX_TOTAL_SIZE = 56 * 1024; // 56KB max
+    private static final int MAX_CHUNKS = 286; // Maximum number of chunks
     private final int chunkSize;
     private final HashMap<Integer, byte[]> receivedChunks;
     private boolean isReceivingChunks;
@@ -117,7 +116,7 @@ public class ChunkManager {
             MessageStatus.UNKNOWN,
             3,
             channel,
-            true
+            MeshtasticReceiver.getWantsAck()
         );
         
         meshService.send(endPacket);
@@ -144,7 +143,7 @@ public class ChunkManager {
                 MessageStatus.UNKNOWN,
                 hopLimit,
                 channel,
-                true
+                MeshtasticReceiver.getWantsAck()
             );
             
             meshService.send(dp);
