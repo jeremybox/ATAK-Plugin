@@ -3,6 +3,7 @@ package com.atakmap.android.meshtastic;
 import static android.content.Context.NOTIFICATION_SERVICE;
 
 import static com.atakmap.android.maps.MapView.*;
+import static com.atakmap.android.meshtastic.util.Constants.PREF_PLUGIN_SHORTTURBO;
 
 import android.Manifest;
 import android.app.Activity;
@@ -18,6 +19,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 
 import com.atakmap.android.meshtastic.util.Constants;
+import com.atakmap.android.meshtastic.util.AckManager;
+import com.atakmap.android.meshtastic.util.FileTransferManager;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -95,8 +98,8 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
     private static NotificationManager mNotifyManager;
     private static NotificationCompat.Builder mBuilder;
     private static NotificationChannel mChannel;
-    private static int id = 42069;
-    private static int RECORDER_SAMPLERATE = 8000;
+    private static int id = Constants.NOTIFICATION_ID;
+    private static int RECORDER_SAMPLERATE = Constants.AUDIO_SAMPLE_RATE;
     // shared prefs
     private static ProtectedSharedPreferences prefs = new ProtectedSharedPreferences(
             PreferenceManager.getDefaultSharedPreferences(MapView.getMapView().getContext())
@@ -170,7 +173,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 Log.d(TAG, "Received ACTION_MESH_CONNECTED: " + extraConnected);
                 if (connected) {
                     SharedPreferences.Editor editor = prefs.edit();
-                    editor.putBoolean("plugin_meshtastic_shortfast", false);
+                    editor.putBoolean(PREF_PLUGIN_SHORTTURBO, false);
                     editor.apply();
                     boolean ret = MeshtasticMapComponent.reconnect();
                     if (ret) {
@@ -201,19 +204,24 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 int id = intent.getIntExtra(Constants.EXTRA_PACKET_ID, 0);
                 MessageStatus status = intent.getParcelableExtra(Constants.EXTRA_STATUS);
                 Log.d(TAG, "Message Status ID: " + id + " Status: " + status);
-                if (prefs.getInt("plugin_meshtastic_switch_id", 0) == id && status == MessageStatus.DELIVERED) {
-                    editor.putBoolean("plugin_meshtastic_switch_ACK", false);
+                
+                // Process ACK through AckManager
+                AckManager.getInstance().processAck(id, status);
+                
+                // Keep legacy preference updates for backward compatibility
+                if (prefs.getInt(Constants.PREF_PLUGIN_SWITCH_ID, 0) == id && status == MessageStatus.DELIVERED) {
+                    editor.putBoolean(Constants.PREF_PLUGIN_SWITCH_ACK, false);
                     editor.apply();
                     Log.d(TAG, "Got ACK from Switch");
-                } else if (prefs.getInt("plugin_meshtastic_chunk_id", 0) == id && status == MessageStatus.DELIVERED) {
+                } else if (prefs.getInt(Constants.PREF_PLUGIN_CHUNK_ID, 0) == id && status == MessageStatus.DELIVERED) {
                     // clear the ACK/ERR for the chunk
-                    editor.putBoolean("plugin_meshtastic_chunk_ACK", false);
-                    editor.putBoolean("plugin_meshtastic_chunk_ERR", false);
+                    editor.putBoolean(Constants.PREF_PLUGIN_CHUNK_ACK, false);
+                    editor.putBoolean(Constants.PREF_PLUGIN_CHUNK_ERR, false);
                     editor.apply();
                     Log.d(TAG, "Got DELIVERED from Chunk");
-                } else if (prefs.getInt("plugin_meshtastic_chunk_id", 0) == id && status == MessageStatus.ERROR) {
-                    editor.putBoolean("plugin_meshtastic_chunk_ACK", false);
-                    editor.putBoolean("plugin_meshtastic_chunk_ERR", true);
+                } else if (prefs.getInt(Constants.PREF_PLUGIN_CHUNK_ID, 0) == id && status == MessageStatus.ERROR) {
+                    editor.putBoolean(Constants.PREF_PLUGIN_CHUNK_ACK, false);
+                    editor.putBoolean(Constants.PREF_PLUGIN_CHUNK_ERR, true);
                     editor.apply();
                     Log.d(TAG, "Got ERROR from Chunk");
                 }
@@ -241,7 +249,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 Log.d(TAG, "Message: " + message);
                 Log.d(TAG, payload.toString());
 
-                if (prefs.getBoolean("plugin_meshtastic_voice", false)) {
+                if (prefs.getBoolean(Constants.PREF_PLUGIN_VOICE, false)) {
                     MeshtasticDropDownReceiver.t1.speak(message, TextToSpeech.QUEUE_FLUSH, null);
                 }
 
@@ -307,7 +315,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
                     if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
-                        if (prefs.getBoolean("plugin_meshtastic_server", false)) {
+                        if (prefs.getBoolean(Constants.PREF_PLUGIN_SERVER, false)) {
                             CotMapComponent.getExternalDispatcher().dispatch(cotEvent);
                         }
                     }
@@ -392,7 +400,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     return;
                 }
 
-                if (prefs.getBoolean("plugin_meshtastic_nogps", false)) {
+                if (prefs.getBoolean(Constants.PREF_PLUGIN_NOGPS, false)) {
                     if (ni.getPosition().getLatitude() == 0 && ni.getPosition().getLongitude() == 0) {
                         Log.d(TAG, "Ignoring NodeInfo with 0,0 GPS");
                         return;
@@ -405,19 +413,19 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     Log.d(TAG, "myId was null");
                     return;
                 }
-                boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean("plugin_meshtastic_external_gps", false);
+                boolean shouldUseMeshtasticExternalGPS = prefs.getBoolean(Constants.PREF_PLUGIN_EXTERNAL_GPS, false);
                 if (shouldUseMeshtasticExternalGPS && ni.getUser().getId().equals(myId)) {
                     Log.d(TAG, "Sending self coordinates to network GPS");
 
                     meshtasticExternalGPS.updatePosition(ni.getPosition());
                 }
 
-                if (ni.getUser().getId().equals(myId) && prefs.getBoolean("plugin_meshtastic_self", false)) {
+                if (ni.getUser().getId().equals(myId) && prefs.getBoolean(Constants.PREF_PLUGIN_SELF, false)) {
                     Log.d(TAG, "Ignoring self");
                     return;
                 }
 
-                if (prefs.getBoolean("plugin_meshtastic_tracker", false)) {
+                if (prefs.getBoolean(Constants.PREF_PLUGIN_TRACKER, false)) {
                     String nodeName = ni.getUser().getLongName();
                     Log.i(TAG, "Node name: " + nodeName);
                     CotDetail groupDetail = new CotDetail("__group");
@@ -528,7 +536,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
                     if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
-                        if (prefs.getBoolean("plugin_meshtastic_server", false)) {
+                        if (prefs.getBoolean(Constants.PREF_PLUGIN_SERVER, false)) {
                             CotMapComponent.getExternalDispatcher().dispatch(cotEvent);
                         }
                     } else
@@ -699,11 +707,11 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
             String message = new String(payload.getBytes());
             // user must opt-in for SWITCH message
-            if (message.startsWith("SWT") && prefs.getBoolean("plugin_meshtastic_switch", false)) {
+            if (message.startsWith("SWT") && prefs.getBoolean(Constants.PREF_PLUGIN_SWITCH, false)) {
                 Log.d(TAG, "Received Switch message");
 
                 // flag to indicate we're in file transfer mode
-                editor.putBoolean("plugin_meshtastic_file_transfer", true);
+                editor.putBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, true);
                 editor.apply();
 
                 sender = payload.getFrom();
@@ -718,6 +726,9 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 } catch (InvalidProtocolBufferException e) {
                     Log.d(TAG, "Failed to process Switch packet");
                     e.printStackTrace();
+                    // Rollback state on error
+                    editor.putBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false);
+                    editor.apply();
                     return;
                 }
 
@@ -726,18 +737,18 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 ConfigProtos.Config.LoRaConfig lc = c.getLora();
                 oldModemPreset = lc.getModemPreset().getNumber();
 
-                // set short/fast for file transfer
+                // set short/turbo for file transfer
                 ConfigProtos.Config.Builder configBuilder = ConfigProtos.Config.newBuilder();
                 AtomicReference<ConfigProtos.Config.LoRaConfig.Builder> loRaConfigBuilder = new AtomicReference<>(lc.toBuilder());
-                AtomicReference<ConfigProtos.Config.LoRaConfig.ModemPreset> modemPreset = new AtomicReference<>(ConfigProtos.Config.LoRaConfig.ModemPreset.forNumber(ConfigProtos.Config.LoRaConfig.ModemPreset.SHORT_FAST_VALUE));
+                AtomicReference<ConfigProtos.Config.LoRaConfig.ModemPreset> modemPreset = new AtomicReference<>(ConfigProtos.Config.LoRaConfig.ModemPreset.forNumber(ConfigProtos.Config.LoRaConfig.ModemPreset.SHORT_TURBO_VALUE));
                 loRaConfigBuilder.get().setModemPreset(modemPreset.get());
                 configBuilder.setLora(loRaConfigBuilder.get());
                 boolean needReboot;
 
-                // if not already in short/fast mode, switch to it
-                if (oldModemPreset != ConfigProtos.Config.LoRaConfig.ModemPreset.SHORT_FAST_VALUE) {
+                // if not already in short/turbo mode, switch to it
+                if (oldModemPreset != ConfigProtos.Config.LoRaConfig.ModemPreset.SHORT_TURBO_VALUE) {
                     ((Activity)MapView.getMapView().getContext()).runOnUiThread(() -> {
-                        Toast.makeText(getMapView().getContext(), "Rebooting to Short/Fast for file transfer", Toast.LENGTH_LONG).show();
+                        Toast.makeText(getMapView().getContext(), "Rebooting to Short/Turbo for file transfer", Toast.LENGTH_LONG).show();
                     });
                     needReboot = true;
                 } else {
@@ -746,6 +757,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
                 SharedPreferences.Editor finalEditor = editor;
                 new Thread(() -> {
+                    boolean shortTurboSet = false;
                     try {
                         // hopefully enough time to ACK the SWT command
                         Thread.sleep(2000);
@@ -754,19 +766,27 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                         if (needReboot) {
                             try {
                                 // flag to indicate we are rebooting into short/fast
-                                finalEditor.putBoolean("plugin_meshtastic_shortfast", true);
+                                finalEditor.putBoolean(PREF_PLUGIN_SHORTTURBO, true);
                                 finalEditor.apply();
+                                shortTurboSet = true;
                                 MeshtasticMapComponent.setConfig(configBuilder.build().toByteArray());
                                 // wait for ourselves to switch to short/fast
-                                while (prefs.getBoolean("plugin_meshtastic_shortfast", false))
+                                while (prefs.getBoolean(PREF_PLUGIN_SHORTTURBO, false))
                                     Thread.sleep(1000);
+                                shortTurboSet = false; // Successfully switched
                             } catch (InterruptedException e) {
                                 e.printStackTrace();
+                                // Reset flag if interrupted during reboot
+                                if (shortTurboSet) {
+                                    finalEditor.putBoolean(PREF_PLUGIN_SHORTTURBO, false);
+                                    finalEditor.apply();
+                                }
+                                return;
                             }
                         }
 
                         // wait for file transfer to finish
-                        while(prefs.getBoolean("plugin_meshtastic_file_transfer", false))
+                        while(prefs.getBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false))
                             Thread.sleep(10000);
 
                         if (needReboot) {
@@ -780,6 +800,19 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
                     } catch (InterruptedException e) {
                         e.printStackTrace();
+                        // Ensure state is cleaned up on interruption
+                        if (shortTurboSet) {
+                            finalEditor.putBoolean(PREF_PLUGIN_SHORTTURBO, false);
+                            finalEditor.apply();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Unexpected error in SWT handler thread", e);
+                        // Ensure state is cleaned up on any error
+                        finalEditor.putBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false);
+                        if (shortTurboSet) {
+                            finalEditor.putBoolean(PREF_PLUGIN_SHORTTURBO, false);
+                        }
+                        finalEditor.apply();
                     }
                 }).start();
 
@@ -787,14 +820,25 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 // sender side, recv file transfer over
                 Log.d(TAG, "Received File message completed");
                 editor = prefs.edit();
-                editor.putBoolean("plugin_meshtastic_file_transfer", false);
+                editor.putBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false);
                 editor.apply();
+                
+                // Signal file transfer completion
+                FileTransferManager.getInstance().completeTransfer();
             } else if (message.startsWith("CHK")) {
                 Log.d(TAG, "Received Chunked message");
                 chunking = true;
                 if (chunkSize == 0) {
-                    chunkSize = Integer.parseInt(message.split("_")[1]);
-                    Log.d(TAG, "Chunk size: " + chunkSize);
+                    try {
+                        chunkSize = Integer.parseInt(message.split("_")[1]);
+                        Log.d(TAG, "Chunk size: " + chunkSize);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to parse chunk size", e);
+                        // Reset chunking state on error
+                        chunking = false;
+                        chunkSize = 0;
+                        return;
+                    }
                 }
                 int chunk_hdr_size = String.format(Locale.US, "CHK_%d_", chunkSize).getBytes().length;
                 byte[] chunk = new byte[payload.getBytes().length - chunk_hdr_size];
@@ -803,6 +847,8 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 } catch (Exception e) {
                     e.printStackTrace();
                     Log.d(TAG, "Failed to copy first chunk");
+                    // Don't continue processing if chunk copy failed
+                    return;
                 }
 
                 // check if this chunk has already been received
@@ -822,7 +868,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     chunkMap.put(Integer.valueOf(chunkCount++), chunk);
                 }
 
-                if(prefs.getBoolean("plugin_meshtastic_file_transfer", false)) {
+                if(prefs.getBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false)) {
                     // caclulate progress
                     //zi = (xi – min(x)) / (max(x) – min(x)) * 100
                     mBuilder.setProgress(100, (int) Math.floor((chunkMap.size() - 1) / (chunkSize - 1) * 100), false);
@@ -833,12 +879,15 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 byte[] combined = new byte[chunkSize];
 
                 int i = 0;
+                boolean copyFailed = false;
                 for (byte[] b : chunkMap.values()) {
                     try {
                         System.arraycopy(b, 0, combined, i, b.length);
                     } catch (Exception e) {
                         e.printStackTrace();
                         Log.d(TAG, "Failed to copy in chunking");
+                        copyFailed = true;
+                        break;
                     }
                     i += b.length;
                     Log.d(TAG, "" + i);
@@ -849,9 +898,15 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                 chunking = false;
                 chunkMap.clear();
                 chunkCount = 0;
+                
+                // If copy failed, don't process the corrupted data
+                if (copyFailed) {
+                    Log.e(TAG, "Chunk assembly failed, discarding data");
+                    return;
+                }
 
                 // this was a file transfer not chunks
-                if (prefs.getBoolean("plugin_meshtastic_file_transfer", false)) {
+                if (prefs.getBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false)) {
                     Log.d(TAG, "File Received");
 
                     mBuilder.setContentText("Transfer complete")
@@ -879,7 +934,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
                     //receive side, file transfer over
                     editor = prefs.edit();
-                    editor.putBoolean("plugin_meshtastic_file_transfer", false);
+                    editor.putBoolean(Constants.PREF_PLUGIN_FILE_TRANSFER, false);
                     editor.apply();
                     return;
                 }
@@ -898,7 +953,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     if (cotEvent.isValid()) {
                         Log.d(TAG, "Chunked CoT Received");
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
-                        if (prefs.getBoolean("plugin_meshtastic_server", false)) {
+                        if (prefs.getBoolean(Constants.PREF_PLUGIN_SERVER, false)) {
                             CotMapComponent.getExternalDispatcher().dispatch(cotEvent);
                         }
                     } else {
@@ -921,7 +976,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     CotEvent cotEvent = CotEvent.parse(writer.toString());
                     if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
-                        if (prefs.getBoolean("plugin_meshtastic_server", false)) {
+                        if (prefs.getBoolean(Constants.PREF_PLUGIN_SERVER, false)) {
                             CotMapComponent.getExternalDispatcher().dispatch(cotEvent);
                         }
                     }
@@ -1023,7 +1078,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
                     if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
-                        if (prefs.getBoolean("plugin_meshtastic_server", false)) {
+                        if (prefs.getBoolean(Constants.PREF_PLUGIN_SERVER, false)) {
                             CotMapComponent.getExternalDispatcher().dispatch(cotEvent);
                         }
                     } else
@@ -1060,7 +1115,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     //    return;
                     //}
 
-                    if (prefs.getBoolean("plugin_meshtastic_voice", false)) {
+                    if (prefs.getBoolean(Constants.PREF_PLUGIN_VOICE, false)) {
                         StringBuilder message = new StringBuilder();
                         message.append("GeoChat from ");
                         message.append(callsign);
@@ -1123,7 +1178,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
                     if (cotEvent.isValid()) {
                         CotMapComponent.getInternalDispatcher().dispatch(cotEvent);
-                        if (prefs.getBoolean("plugin_meshtastic_server", false)) {
+                        if (prefs.getBoolean(Constants.PREF_PLUGIN_SERVER, false)) {
                             CotMapComponent.getExternalDispatcher().dispatch(cotEvent);
                         }
                     } else
@@ -1161,7 +1216,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     //    return;
                     //}
 
-                    if (prefs.getBoolean("plugin_meshtastic_voice", false)) {
+                    if (prefs.getBoolean(Constants.PREF_PLUGIN_VOICE, false)) {
                         StringBuilder message = new StringBuilder();
                         message.append("GeoChat from ");
                         message.append(callsign);
@@ -1235,7 +1290,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
     public static boolean getWantsAck() {
         try {
-            return prefs.getBoolean("plugin_meshtastic_wantAck", true);
+            return prefs.getBoolean(Constants.PREF_PLUGIN_WANT_ACK, true);
         } catch (Exception e) {
             e.printStackTrace();
             return true;
@@ -1244,7 +1299,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
     public static int getHopLimit() {
         try {
-            int hopLimit = prefs.getInt("plugin_meshtastic_hop_limit", 3);
+            int hopLimit = prefs.getInt(Constants.PREF_PLUGIN_HOP_LIMIT, 3);
             Log.d(TAG, "Hop Limit: " + hopLimit);
             if (hopLimit > 8) {
                 hopLimit = 8;
@@ -1258,7 +1313,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
 
     public static int getChannelIndex() {
         try {
-            int channel = prefs.getInt("plugin_meshtastic_channel", 0);
+            int channel = prefs.getInt(Constants.PREF_PLUGIN_CHANNEL, 0);
             Log.d(TAG, "Channel: " + channel);
             return channel;
         } catch (Exception e) {
@@ -1270,7 +1325,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
     @Override
     public void onCotEvent(CotEvent cotEvent, Bundle bundle) {
 
-        if (prefs.getBoolean("plugin_meshtastic_from_server", false)) {
+        if (prefs.getBoolean(Constants.PREF_PLUGIN_FROM_SERVER, false)) {
             if (cotEvent.isValid()) {
 
                 CotDetail cotDetail = cotEvent.getDetail();

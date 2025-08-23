@@ -28,6 +28,7 @@ import com.atakmap.android.dropdown.DropDown;
 import com.atakmap.android.dropdown.DropDownReceiver;
 import com.atakmap.android.maps.MapView;
 import com.atakmap.android.meshtastic.plugin.R;
+import com.atakmap.android.meshtastic.util.Constants;
 import com.atakmap.coremap.log.Log;
 import com.geeksville.mesh.ATAKProtos;
 import com.geeksville.mesh.AppOnlyProtos;
@@ -92,7 +93,7 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
     private int hopLimit = 3;
     private int channel = 0;
     private boolean audioPermissionGranted = false;
-    private static final int RECORDER_SAMPLERATE = 8000;
+    private static final int RECORDER_SAMPLERATE = Constants.AUDIO_SAMPLE_RATE;
     private AudioRecord recorder = null;
     private Thread recordingThread = null;
     private AtomicBoolean isRecording = new AtomicBoolean(false);
@@ -194,7 +195,7 @@ public class MeshtasticDropDownReceiver extends DropDownReceiver implements
             Log.d(TAG, "keyCode: " + keyCode + " onKeyEvent: " + event.toString());
             int pttKey = 0;
             try {
-                pttKey = Integer.valueOf(prefs.getString("plugin_meshtastic_ptt", "0"));
+                pttKey = Integer.valueOf(prefs.getString(Constants.PREF_PLUGIN_PTT, "0"));
             } catch (NumberFormatException e) {
                 Log.d(TAG, "PTT key not set");
                 return false;

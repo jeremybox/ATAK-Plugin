@@ -19,8 +19,7 @@ public final class Constants {
     public static final String ACTION_ALERT_APP = "com.geeksville.mesh.RECEIVED.ALERT_APP";
     public static final String ACTION_NODE_CHANGE = "com.geeksville.mesh.NODE_CHANGE";
     public static final String ACTION_MESSAGE_STATUS = "com.geeksville.mesh.MESSAGE_STATUS";
-    public static final String ACTION_CONFIG_RATE = "com.atakmap.android.meshtastic.CONFIG";
-    
+
     // Extras
     public static final String EXTRA_CONNECTED = "com.geeksville.mesh.Connected";
     public static final String EXTRA_DISCONNECTED = "com.geeksville.mesh.disconnected";
@@ -62,7 +61,7 @@ public final class Constants {
     public static final String PREF_PLUGIN_CHUNK_ID = "plugin_meshtastic_chunk_id";
     public static final String PREF_PLUGIN_CHUNK_ACK = "plugin_meshtastic_chunk_ACK";
     public static final String PREF_PLUGIN_CHUNK_ERR = "plugin_meshtastic_chunk_ERR";
-    public static final String PREF_PLUGIN_SHORTFAST = "plugin_meshtastic_shortfast";
+    public static final String PREF_PLUGIN_SHORTTURBO= "plugin_meshtastic_shortTurbo";
     public static final String PREF_PLUGIN_SWITCH_ID = "plugin_meshtastic_switch_id";
     public static final String PREF_PLUGIN_SWITCH_ACK = "plugin_meshtastic_switch_ACK";
     public static final String PREF_PLUGIN_PLICHAT_ONLY = "plugin_meshtastic_plichat_only";
@@ -72,6 +71,12 @@ public final class Constants {
     public static final String PREF_PLUGIN_TRACKER = "plugin_meshtastic_tracker";
     public static final String PREF_PLUGIN_SERVER = "plugin_meshtastic_server";
     public static final String PREF_LISTEN_PORT = "listenPort";
+    public static final String PREF_PLUGIN_PTT = "plugin_meshtastic_ptt";
+    public static final String PREF_PLUGIN_SWITCH = "plugin_meshtastic_switch";
+    public static final String PREF_PLUGIN_WANT_ACK = "plugin_meshtastic_wantAck";
+    public static final String PREF_PLUGIN_HOP_LIMIT = "plugin_meshtastic_hop_limit";
+    public static final String PREF_PLUGIN_CHANNEL = "plugin_meshtastic_channel";
+    public static final String PREF_PLUGIN_FROM_SERVER = "plugin_meshtastic_from_server";
     
     // ATAK Intent
     public static final String ATAK_PACKAGE = "com.atakmap.app.civ";
