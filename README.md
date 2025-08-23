@@ -129,7 +129,7 @@ The Voice Memo tool allows hands-free message transmission:
 ### Build Steps
 ```bash
 # Clone the repository
-git clone https://github.com/meshtastic/ATAK-Plugin.git
+git clone --recurse-submodules https://github.com/meshtastic/ATAK-Plugin.git
 cd ATAK-Plugin
 
 # Configure local.properties with SDK paths and signing keys
