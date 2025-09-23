@@ -91,6 +91,7 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.sax.SAXSource;
 import javax.xml.transform.stream.StreamResult;
+import com.atakmap.coremap.xml.XMLUtils;
 
 public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceRemote.CotEventListener {
     // constants
@@ -945,7 +946,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     InputSource is = new InputSource(new ByteArrayInputStream(combined));
                     SAXSource exiSource = new EXISource(exiFactory);
                     exiSource.setInputSource(is);
-                    TransformerFactory tf = TransformerFactory.newInstance();
+                    TransformerFactory tf = XMLUtils.getTransformerFactory();
                     Transformer transformer = tf.newTransformer();
                     transformer.transform(exiSource, result);
                     CotEvent cotEvent = CotEvent.parse(writer.toString());
@@ -970,7 +971,7 @@ public class MeshtasticReceiver extends BroadcastReceiver implements CotServiceR
                     InputSource is = new InputSource(new ByteArrayInputStream(payload.getBytes()));
                     SAXSource exiSource = new EXISource(exiFactory);
                     exiSource.setInputSource(is);
-                    TransformerFactory tf = TransformerFactory.newInstance();
+                    TransformerFactory tf = XMLUtils.getTransformerFactory();
                     Transformer transformer = tf.newTransformer();
                     transformer.transform(exiSource, result);
                     CotEvent cotEvent = CotEvent.parse(writer.toString());
